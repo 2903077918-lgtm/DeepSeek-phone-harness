@@ -14,13 +14,13 @@
   - 拆分：executor→`src/dsh-utils.js`（DSH RPC/事件归一化/路径）+ `src/approval-relay.js`（审批+流式缓冲）；顺带修复 `baseName` 缺定义的潜伏 ReferenceError
   - 新增：`src/protocol.js`（信封/消息类型/seq）、`src/e2ee.js`（X25519+HKDF+AES-GCM）、`src/guard.js`（风险分级）、`src/audit.js`（追加审计+hash chain）
   - 验证：`node test-core-modules.mjs` 22/22 通过；LAN 回归 verify-v2 4/4 通过；`/api/dsh-workspaces` bug 修复确认
-- **最近完成**（git a94f3a7）：Agent 云端传输层 `src/transport/cloud.mjs`（WSS 出站客户端）
-  - hello 握手(deviceToken+resumeToken+pendingTasks)、心跳 ping/pong、指数退避重连、task.ack 可靠投递回执、消息分发；单测 `test-cloud-transport.mjs` 12/12 通过
-- **下一步候选**：阶段3 云端服务（复用用户现有 **Cloudflare Workers + Supabase + Vercel** 部署栈，账号经确认可直接复用 voltex 的）
-  - **Agent 侧复用 cloud.mjs 接线**（把 executor 接到云 transport，mode 增 cloud/both，用 e2ee 包任务）
-  - **云端 WS 网关**：Cloudflare Worker + Durable Objects（承接 Agent 出站长连接、任务队列、confirm.kill）——本地实现为独立 worker 项目，不塞进 voltex-ai-platform
-  - **控制面/DB**：Supabase(PG) 存设备/任务/tokens；Vercel 或 Worker 做 REST
-  - **部署执行属 L3**：需 `wrangler login`/Vercel CLI 认证（用你自己的会话执行；我不读写 .env/密钥），明确域名
+- **最近完成**（git a94f3a7 传输层 / becf4e0 云端骨架）：
+  - Agent 云端传输层 `src/transport/cloud.mjs`：WSS 出站客户端，单测 `test-cloud-transport.mjs` 12/12
+  - 云端骨架 `cloud-relay/`：Cloudflare Worker + RelayDO(Durable Object，Agent WSS 落点) + 独立 Supabase schema；TS typecheck 通过、协议一致测试 4/4
+- **下一步候选**（需你主导部署认证，L3）：
+  1. 建独立 Supabase 数据库 → SQL Editor 执行 `cloud-relay/supabase/schema.sql` → 拿 URL + service_role key
+  2. `cloud-relay`: `npx wrangler login`（已登录会话）→ `wrangler secret put SUPABASE_URL/SERVICE_ROLE_KEY` → `wrangler deploy` → 告知我域名
+  3. Agent 侧接线：把 executor 接到 `cloud.mjs`（mode 增 cloud/both，e2ee 加密任务、guard 分级、audit 记录）
 - **环境备注**：DSH web（127.0.0.1:3080）队列繁忙时（多个会话 running）exec 会排队超时——非 relay 故障，等队列清空即可
 
 ---
@@ -67,11 +67,10 @@ fc753b2 阶段2第一步（模块化拆分+双执行后端）
 - ✅ 治理基线 + 云端架构文档 + DSH 反馈报告
 
 **待做**：
-- 阶段3 Agent 侧接线：把 executor 接到 cloud transport（mode 增 cloud/both），用 e2ee 加密任务内容、guard 分级、audit 记录——本地可开发+单测（L2）
-- 阶段3 云端服务（复用现有 **Cloudflare Workers + Supabase + Vercel**，账号可直接复用；L3 部署需你执行认证/域名）：
-  - 云端 WS 网关：Cloudflare Worker + Durable Objects（承接 Agent 出站长连接、任务队列、confirm/kill、outbox）
-  - 控制面 REST：Vercel 或 Worker；数据库 Supabase(PG)：users/devices/tasks/tokens/audit
-  - 独立 worker 项目（`cloud-relay/`），不塞进 voltex-ai-platform
+- ✅ 云端骨架 `cloud-relay/`：Cloudflare Worker + RelayDO + 独立 Supabase schema 已实现（TypeScript typecheck 通过、协议一致 4/4）
+- 阶段3 **部署**（L3，需你主导认证，我提供代码+步骤）：独立 Supabase 建库跑 `supabase/schema.sql`；`cloud-relay` 里 `wrangler login` + 设 secret + `deploy` + 告知域名
+- 阶段3 Agent 侧接线（L2）：把 executor 接到 `src/transport/cloud.mjs`（mode 增 cloud/both），用 e2ee 加密任务、guard 分级、audit 记录
+- 云端 REST 完善：注册/配对配对码、任务 CRUD、confirm/kill 端点（当前 index.ts 仅健康检查/设备查询/kill 占位）
 - 阶段4：App 上架、支付、多租户
 - 产品化调优：审批权限预设（当前 workspace-write 下触发少）、超大 DSH 会话 history limit、通知推送
 
@@ -117,6 +116,7 @@ phone-harness/
 ├── src/guard.js           # 高风险指令分级+确认策略（阶段3，已就位）
 ├── src/audit.js           # 追加式审计日志+hash chain（阶段3，已就位）
 ├── src/transport/cloud.mjs # 云端传输层：WSS出站客户端+心跳+重连+outbox回执（阶段3，已就位）
+├── cloud-relay/           # 云端服务骨架（Cloudflare Worker + RelayDO + 独立 Supabase schema）
 ├── web/index.html         # 手机控制台 UI（v2 三层导航 + 流式 + 头像/空态）
 ├── design/                # PWA 图标源文件 + 设计稿截图 + UI 检查脚本
 ├── docs/architecture/cloud-architecture.md  # 云端设计
