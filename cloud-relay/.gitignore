@@ -1,0 +1,11 @@
+# Cloudflare 部署/运行时文件
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+!.env.example
+!.dev.vars.example
+*.local

@@ -1,0 +1,30 @@
+// cloud-relay —— 深巷 harness relay 云端（控制面）+ WS 网关（Durable Object）
+// 复用现有 Cloudflare + Supabase 账号；数据用**独立** Supabase 数据库（不复用 voltex）。
+// 对应 docs/architecture/cloud-architecture.md 第 2/4 章（落地为 CF Worker + DO + Supabase）。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cloud-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    "PROTOCOL_VERSION": 1
+  },
+  "d1_databases": [],
+  "durable_objects": {
+    "bindings": [
+      { "name": "RELAY_DO", "class_name": "RelayDO" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RelayDO"] }
+  ],
+  "assets": {
+    "directory": ".assets",
+    "not_found_handling": "single-page-application"
+  },
+  "triggers": {
+    "crons": []
+  }
+}
