@@ -14,7 +14,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { PORT, HOST, AGENT_VERSION } from './config.js';
-import { createApprovalRelay } from './executor.js';
+import { createApprovalRelay } from './approval-relay.js';
 
 export function createLanTransport({ config, rootDir, executor, history, queue }) {
   function auth(req, res) {
