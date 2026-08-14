@@ -595,9 +595,10 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
       }));
     },
     // GET /api/dsh-sessions：session.list 归一化（title 取自 projections，零额外 RPC）
-    async listDshSessions() {
+    // 可选 withCount=true：对每个会话取消息数（session.history 事件数）——只给 UI 打开的项目用，避免全量开销
+    async listDshSessions(withCount) {
       const value = await fetchRpc('session.list', {});
-      return ((value && value.items) || []).map((s) => ({
+      const items = ((value && value.items) || []).map((s) => ({
         sessionId: s.sessionId,
         cwd: s.cwd,
         title: (s.projections && s.projections.values && s.projections.values.title) || undefined,
@@ -605,6 +606,19 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         running: !!s.running,
         blank: !!s.blank,
       }));
+      if (withCount) {
+        await Promise.all(items.map(async (s) => {
+          try {
+            const h = await fetchRpc('session.history', { sessionId: s.sessionId });
+            const events = (h && h.events) || [];
+            s.messageCount = events.filter((e) => {
+              const t = e && e.event && e.event.type;
+              return t === 'user/message' || t === 'assistant/message';
+            }).length;
+          } catch { s.messageCount = undefined; }
+        }));
+      }
+      return items;
     },
     // POST /api/dsh-continue：对 DSH 已有会话继续发消息（不新建、不改注册表）。
     // 复用 runWebApi 的"记录提交前进度 + 只统计本轮增量"逻辑；存在性用一次轻量 session.list 检查。
