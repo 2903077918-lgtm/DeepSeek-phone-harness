@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4D6BFE"/>
+      <stop offset="100%" stop-color="#6C8CFF"/>
+    </linearGradient>
+  </defs>
+  <!-- 深色圆角背景 -->
+  <rect width="512" height="512" rx="100" fill="#0A0A0A"/>
+  <!-- 鲸鱼符号（简化版，适配小尺寸） -->
+  <g transform="translate(256,256) scale(1.8)" fill="url(#grad)">
+    <path d="M-60,-30 C-70,-50 -40,-70 -20,-60 C-10,-55 0,-40 10,-30 C20,-20 30,-10 40,-5 C50,0 60,10 55,25 C50,40 35,50 20,55 C5,60 -10,65 -25,60 C-40,55 -55,40 -60,25 C-65,10 -55,-10 -60,-30 Z"/>
+    <!-- 鲸鱼尾巴 -->
+    <path d="M-55,20 C-70,30 -80,20 -75,10 C-70,0 -60,-5 -55,5 Z"/>
+    <!-- 眼睛 -->
+    <circle cx="-25" cy="-20" r="4" fill="#0A0A0A"/>
+  </g>
+</svg>
