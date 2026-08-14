@@ -14,13 +14,15 @@
   - 拆分：executor→`src/dsh-utils.js`（DSH RPC/事件归一化/路径）+ `src/approval-relay.js`（审批+流式缓冲）；顺带修复 `baseName` 缺定义的潜伏 ReferenceError
   - 新增：`src/protocol.js`（信封/消息类型/seq）、`src/e2ee.js`（X25519+HKDF+AES-GCM）、`src/guard.js`（风险分级）、`src/audit.js`（追加审计+hash chain）
   - 验证：`node test-core-modules.mjs` 22/22 通过；LAN 回归 verify-v2 4/4 通过；`/api/dsh-workspaces` bug 修复确认
-- **最近完成**（git a94f3a7 传输层 / becf4e0 云端骨架）：
+- **最近完成**（git a94f3a7 传输层 / becf4e0 云端骨架 / f105c7c Agent 接线）：
   - Agent 云端传输层 `src/transport/cloud.mjs`：WSS 出站客户端，单测 `test-cloud-transport.mjs` 12/12
-  - 云端骨架 `cloud-relay/`：Cloudflare Worker + RelayDO(Durable Object，Agent WSS 落点) + 独立 Supabase schema；TS typecheck 通过、协议一致测试 4/4
+  - 云端骨架 `cloud-relay/`：Cloudflare Worker + RelayDO + Supabase schema；TS typecheck + 协议一致 4/4
+  - **Agent 接线** `src/cloud-service.mjs`：收 task.submit→E2EE 解密→guard 风险分级+确认→executor→加密回传；`agent.mjs --mode=lan|both|cloud`（读 config.json.cloud 节）
+  - 全部单测：core 22 + cloud-transport 12 + cloud-service 10 通过；LAN 冒烟无回归；cloud 无配置优雅跳过
 - **下一步候选**（需你主导部署认证，L3）：
   1. 建独立 Supabase 数据库 → SQL Editor 执行 `cloud-relay/supabase/schema.sql` → 拿 URL + service_role key
-  2. `cloud-relay`: `npx wrangler login`（已登录会话）→ `wrangler secret put SUPABASE_URL/SERVICE_ROLE_KEY` → `wrangler deploy` → 告知我域名
-  3. Agent 侧接线：把 executor 接到 `cloud.mjs`（mode 增 cloud/both，e2ee 加密任务、guard 分级、audit 记录）
+  2. `cloud-relay`: `npx wrangler login` → `wrangler secret put SUPABASE_URL/SERVICE_ROLE_KEY` → `wrangler deploy` → 告知域名
+  3. 在 `config.json` 填 `cloud:{url,deviceId,deviceToken,resumeToken?,e2ee:{privateKey,peerPublicKey,salt},confirmPolicy}` → `node agent.mjs --mode=cloud`
 - **环境备注**：DSH web（127.0.0.1:3080）队列繁忙时（多个会话 running）exec 会排队超时——非 relay 故障，等队列清空即可
 
 ---
@@ -68,8 +70,9 @@ fc753b2 阶段2第一步（模块化拆分+双执行后端）
 
 **待做**：
 - ✅ 云端骨架 `cloud-relay/`：Cloudflare Worker + RelayDO + 独立 Supabase schema 已实现（TypeScript typecheck 通过、协议一致 4/4）
+- ✅ Agent 侧接线（f105c7c）：`src/cloud-service.mjs` 桥接 transport↔executor（e2ee 加密任务、guard 分级+确认、audit 记录），`agent.mjs --mode=lan|both|cloud`，单测 10/10
 - 阶段3 **部署**（L3，需你主导认证，我提供代码+步骤）：独立 Supabase 建库跑 `supabase/schema.sql`；`cloud-relay` 里 `wrangler login` + 设 secret + `deploy` + 告知域名
-- 阶段3 Agent 侧接线（L2）：把 executor 接到 `src/transport/cloud.mjs`（mode 增 cloud/both），用 e2ee 加密任务、guard 分级、audit 记录
+- config.json 填 cloud 节（url/deviceId/deviceToken/e2ee/confirmPolicy）→ `node agent.mjs --mode=cloud`
 - 云端 REST 完善：注册/配对配对码、任务 CRUD、confirm/kill 端点（当前 index.ts 仅健康检查/设备查询/kill 占位）
 - 阶段4：App 上架、支付、多租户
 - 产品化调优：审批权限预设（当前 workspace-write 下触发少）、超大 DSH 会话 history limit、通知推送
