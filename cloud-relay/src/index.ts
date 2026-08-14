@@ -23,27 +23,45 @@ import type { Env } from './bindings.js';
 
 export { RelayDO };
 
+// 当前请求的 Origin（CORS；按请求同步赋值，JSON 响应同步构造，无并发覆盖）
+let reqOrigin: string | null = null;
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const { pathname } = url;
     const method = request.method;
+    reqOrigin = request.headers.get('Origin');
+    const origin = reqOrigin;
+
+    // CORS 预检直接放行（204 无 body，单独构造）
+    if (method === 'OPTIONS') {
+      const res = new Response(null, { status: 204 });
+      if (origin) {
+        res.headers.set('Access-Control-Allow-Origin', origin);
+        res.headers.set('Vary', 'Origin');
+        res.headers.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+        res.headers.set('Access-Control-Allow-Headers', 'content-type, x-user-id, authorization');
+      }
+      return res;
+    }
+
     const db = method === 'GET' && pathname.startsWith('/v1/agent/ws') ? null
       : createDb(env); // 懒建（WS 升级不需要 DB）
 
-    // ---- Agent WS 升级：路由到对应设备 RelayDO ----
+    // Agent WS 升级：不适用 CORS
     if (method === 'GET' && pathname === '/v1/agent/ws') {
       const agentId = url.searchParams.get('deviceId') || '';
-      if (!agentId) return json({ error: 'missing deviceId' }, 400);
+      if (!agentId) return json({ error: 'missing deviceId' }, 400, origin);
       const stub = env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + agentId));
       return stub.fetch(request);
     }
     if (method === 'GET' && pathname === '/v1/status') {
-      return json({ ok: true, service: 'cloud-relay', ts: new Date().toISOString() });
+      return json({ ok: true, service: 'cloud-relay', ts: new Date().toISOString() }, 200, origin);
     }
 
     // 以下需要 DB；未配置 Supabase 则提示
-    if (!db) return json({ error: 'Supabase 未配置', hint: 'wrangler secret put SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY' }, 500);
+    if (!db) return json({ error: 'Supabase 未配置', hint: 'wrangler secret put SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY' }, 500, origin);
 
     // ---- 账号 ----
     if (method === 'POST' && pathname === '/v1/auth/register') {
@@ -191,8 +209,16 @@ function createDb(env: Env) {
   return createSupabase(supaEnv);
 }
 
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+function json(data: unknown, status = 200, origin?: string | null): Response {
+  const o = origin !== undefined ? origin : reqOrigin;
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (o) {
+    headers['Access-Control-Allow-Origin'] = o;
+    headers['Vary'] = 'Origin';
+    headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS';
+    headers['Access-Control-Allow-Headers'] = 'content-type, x-user-id, authorization';
+  }
+  return new Response(JSON.stringify(data), { status, headers });
 }
 
 async function readJson(request: Request): Promise<Record<string, any>> {

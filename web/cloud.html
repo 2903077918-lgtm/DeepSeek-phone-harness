@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0A0A0A">
+<title>cloud-relay · 手机端控制台</title>
+<style>
+  :root{
+    --bg:#0A0A0C; --bg2:#12121A; --card:#1A1A24; --card2:#1F1F2B;
+    --border:#2A2A3A; --text:#E6E6F0; --muted:#9A9AAF; --faint:#5C5C72;
+    --accent:#4D6BFE; --accent2:#6C8CFF; --ok:#3DDC84; --err:#FF6B6B; --warn:#FFB020;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--text);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding-bottom:env(safe-area-inset-bottom)}
+  .app{max-width:640px;margin:0 auto;padding:14px calc(14px + env(safe-area-inset-right)) 120px calc(14px + env(safe-area-inset-left))}
+  h1{font-size:20px;font-weight:700;margin:6px 0 2px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+  .conn{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:12px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:none}
+  .dot.on{background:var(--ok)} .dot.err{background:var(--err)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:14px}
+  .card h2{font-size:14px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  label{display:block;font-size:12.5px;color:var(--muted);margin:8px 0 4px}
+  input,select,textarea{width:100%;background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  textarea{min-height:70px;resize:vertical}
+  button{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600;cursor:pointer;width:100%}
+  button.ghost{background:none;border:1px solid var(--border);color:var(--muted)}
+  button.danger{background:none;border:1px solid rgba(255,107,107,.4);color:var(--err)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .row{display:flex;gap:8px} .row button{flex:1}
+  .list .item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:var(--card2)}
+  .item .t{font-weight:600;font-size:14px}
+  .item .s{font-size:11.5px;color:var(--muted)}
+  .badge{font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.07);color:var(--muted);flex:none}
+  .badge.ok{background:rgba(61,220,132,.14);color:var(--ok)} .badge.err{background:rgba(255,107,107,.14);color:var(--err)}
+  .msg{display:flex;margin:8px 0;max-width:100%}
+  .msg.user{justify-content:flex-end}
+  .msg .bubble{padding:11px 14px;border-radius:16px;font-size:14px;white-space:pre-wrap;word-break:break-word;max-width:88%;background:var(--card2);border:1px solid var(--border)}
+  .msg.user .bubble{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff}
+  .appr-card{border:1px solid rgba(77,107,254,.45);border-radius:12px;background:var(--card2);padding:12px;margin:8px 0}
+  .appr-title{font-weight:700;font-size:13.5px;margin-bottom:4px}
+  .appr-reason{font-size:12.5px;color:var(--muted);margin-bottom:10px;word-break:break-word}
+  .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);opacity:0;transition:.25s;z-index:60;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-size:13px;max-width:86vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.err{border-color:rgba(255,107,107,.5);color:var(--err)}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="conn"><span class="dot" id="connDot"></span><span id="connLabel">未连接云端</span></div>
+  <h1>cloud-relay</h1>
+  <div class="sub">4G/任何网络下远程控制家里的电脑 Agent（DeepSeek Harness）。</div>
+
+  <!-- 连接 + 账号 -->
+  <div class="card" id="loginCard">
+    <h2>🔗 云端连接与账号</h2>
+    <label>云端地址</label>
+    <input id="cloudUrl" type="text" placeholder="wss/ https://cloud-relay.example.com" autocomplete="off">
+    <label>邮箱</label>
+    <input id="email" type="email" placeholder="you@example.com" autocomplete="off">
+    <label>密码</label>
+    <input id="password" type="password" placeholder="••••••••" autocomplete="off">
+    <div class="row" style="margin-top:12px">
+      <button id="loginBtn">登录 / 连接</button>
+      <button class="ghost" id="regBtn">注册</button>
+    </div>
+    <div class="sub" id="accountState" style="margin-top:10px">未登录，可先注册一个云端账号。</div>
+  </div>
+
+  <!-- 设备 -->
+  <div id="deviceSection" class="hidden">
+    <div class="card">
+      <h2>🖥 我的设备 <span style="flex:1"></span><button class="ghost" id="refreshDev" style="width:auto;padding:4px 10px">刷新</button></h2>
+      <div id="deviceList" class="list"></div>
+      <div class="sub" id="deviceEmpty">还没有设备。先在电脑端 `agent.mjs --mode=cloud` 启动并让它上报设备，再用配对码绑定。</div>
+    </div>
+    <div class="card">
+      <h2>🔑 绑定设备（配对码）</h2>
+      <label>设备 ID（电脑端上报的 agentId）</label>
+      <input id="pairAgentId" placeholder="如 agent-pc-1" autocomplete="off">
+      <label>配对码（设备注册时返回 / 电脑端显示）</label>
+      <input id="pairCode" placeholder="8 位，如 PY9M4PH9" autocomplete="off">
+      <button id="pairBtn" style="margin-top:10px">绑定</button>
+    </div>
+  </div>
+
+  <!-- 任务 -->
+  <div id="taskSection" class="hidden">
+    <div class="card">
+      <h2>📤 下发任务 <button class="ghost" id="backToDev" style="width:auto;padding:4px 10px">← 设备</button></h2>
+      <div class="sub" id="taskDeviceLabel"></div>
+      <textarea id="taskPrompt" placeholder="输入要电脑 Agent 执行的任务…"></textarea>
+      <button id="sendTask" style="margin-top:10px">发送到设备</button>
+      <div id="chat" style="margin-top:14px"></div>
+      <div id="recentTasks" class="list" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var LS = 'ph_cloud_'; // 前缀，与 index.html 隔离
+  function load(key, d) { try { return JSON.parse(localStorage.getItem(LS + key)) ; } catch (e) { return d; } }
+  function save(key, val) { localStorage.setItem(LS + key, JSON.stringify(val)); }
+
+  var state = {
+    baseUrl: localStorage.getItem(LS + 'baseUrl') || '',
+    userId: localStorage.getItem(LS + 'userId') || '',
+    email: localStorage.getItem(LS + 'email') || '',
+    deviceId: null,     // 当前选中设备 agentId
+    taskId: null,       // 当前对话任务
+  };
+
+  var CONFIRM_BTN = { ok: {t:'允许一次',c:'btn ok'}, no: {t:'拒绝',c:'btn no'} };
+
+  function toast(msg, isErr) {
+    var t = $('toast'); t.textContent = msg; t.className = 'toast show' + (isErr ? ' err' : '');
+    clearTimeout(t._tm); t._tm = setTimeout(function(){ t.className = 'toast'; }, 2600);
+  }
+
+  // 访问云端的 fetch 封装（base = state.baseUrl，远端已配 TLS）
+  async function api(path, opts) {
+    opts = opts || {};
+    var u = state.baseUrl.replace(/\/+$/,'') + path;
+    var h = { 'content-type': 'application/json' };
+    if (state.userId) h['x-user-id'] = state.userId;
+    var r;
+    try { r = await fetch(u, { method: opts.method||'GET', headers: h, body: opts.body }); }
+    catch (e) { throw new Error('无法连接云端：' + e.message); }
+    var data = null; try { data = await r.json(); } catch(e){}
+    if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
+    return data;
+  }
+
+  function setConn(ok, label) {
+    $('connDot').className = 'dot' + (ok===false?' err': ok?' on':'');
+    $('connLabel').textContent = label;
+  }
+
+  async function checkConn() {
+    if (!state.baseUrl) { setConn(false, '未配置云端地址'); return false; }
+    try { await api('/v1/status'); setConn(true, '已连云端'); return true; }
+    catch(e) { setConn(false, '云端不可达'); return false; }
+  }
+
+  // ---- 账号 ----
+  async function register() {
+    var em = $('email').value.trim(), pw = $('password').value;
+    if (!em||!pw) return toast('邮箱/密码必填', true);
+    try { var d = await api('/v1/auth/register', { method:'POST', body: JSON.stringify({email:em,password:pw}) });
+      toast('注册成功，请登录'); $('password').value=''; }
+    catch(e){ toast('注册失败: ' + e.message, true); }
+  }
+  async function doLogin() {
+    var em = $('email').value.trim(), pw = $('password').value;
+    if (!em||!pw) return toast('邮箱/密码必填', true);
+    try {
+      var d = await api('/v1/auth/login', { method:'POST', body: JSON.stringify({email:em,password:pw}) });
+      state.userId = d.userId; state.email = d.email;
+      localStorage.setItem(LS+'userId', d.userId); localStorage.setItem(LS+'email', d.email);
+      $('accountState').textContent = '已登录：' + d.email;
+      toast('登录成功'); showLoggedIn(); loadDevices();
+    } catch(e){ toast('登录失败: ' + e.message, true); }
+  }
+
+  function showLoggedIn() {
+    $('loginCard').className = 'card'; // 保留账号卡（可看到已登录）
+    $('deviceSection').classList.remove('hidden');
+    $('taskSection').classList.remove('hidden');
+  }
+  function isLoggedIn(){ return !!state.userId; }
+
+  // ---- 设备 ----
+  async function loadDevices() {
+    if (!isLoggedIn()) return;
+    $('deviceEmpty').classList.remove('hidden'); $('deviceList').innerHTML='';
+    try {
+      var r = await api('/v1/tasks?limit=1'); // 探一下（仅确认可用，设备列表看下）
+    } catch(e){ /* 忽略 */ }
+    // 云端当前按已知设备 agentId 展示（这里简单列出最近使用过的设备，见 localStorage）
+    var known = load('devices', []);
+    renderDevices(known);
+    $('deviceEmpty').classList.add('hidden');
+    if (!known.length) $('deviceEmpty').textContent = '暂无绑定设备。用下方配对码绑定你电脑上的 agent 设备。';
+  }
+  function renderDevices(list) {
+    var box=$('deviceList'); box.innerHTML='';
+    (list||[]).forEach(function(d){
+      var it=document.createElement('div'); it.className='item';
+      var left=document.createElement('div');
+      left.innerHTML='<div class="t">'+esc(d.agentId||'')+'</div><div class="s">'+esc(d.status||'online')+' · 已绑定</div>';
+      var btn=document.createElement('button'); btn.className='ghost'; btn.textContent='进入'; btn.style.width='auto';
+      btn.onclick=function(){ openDevice(d.agentId); };
+      it.appendChild(left); it.appendChild(btn); box.appendChild(it);
+    });
+  }
+
+  async function pairDevice() {
+    var agentId=$('pairAgentId').value.trim(), code=$('pairCode').value.trim().toUpperCase();
+    if(!agentId||!code) return toast('设备 ID 和配对码必填', true);
+    try {
+      await api('/v1/devices/' + encodeURIComponent(agentId) + '/pair', { method:'POST', body: JSON.stringify({ pairCode: code, userId: state.userId }) });
+      var known=load('devices', []); known.push({agentId:agentId, status:'online'}); save('devices', known);
+      toast('设备已绑定'); $('pairAgentId').value=''; $('pairCode').value=''; loadDevices();
+    } catch(e){ toast('配对失败: ' + e.message, true); }
+  }
+
+  // ---- 任务 ----
+  function openDevice(agentId) {
+    state.deviceId = agentId;
+    $('taskDeviceLabel').textContent = '设备：' + agentId;
+    $('chat').innerHTML = ''; $('recentTasks').innerHTML='';
+    loadTasks();
+  }
+  async function loadTasks() {
+    if(!state.deviceId) return;
+    try {
+      var d = await api('/v1/tasks?deviceId=' + encodeURIComponent(state.deviceId));
+      renderTaskList((d.items||[]).reverse()); // 新→旧
+    } catch(e){ toast('加载任务失败: '+e.message, true); }
+  }
+  function renderTaskList(items) {
+    var box=$('recentTasks'); box.innerHTML='';
+    (items||[]).slice(0,20).forEach(function(t){
+      var it=document.createElement('div'); it.className='item';
+      it.innerHTML='<div><div class="t">'+esc(t.id.slice(0,8))+'</div><div class="s">'+esc(t.status)+'</div></div>';
+      it.onclick=function(){ openTask(t); };
+      box.appendChild(it);
+    });
+  }
+  function openTask(t){
+    state.taskId=t.id;
+    $('chat').innerHTML='';
+    appendMsg('user', (t.prompt_cipher?'[密文任务（E2EE 后续）]':'') + '任务 ' + t.id.slice(0,8) + ' · ' + t.status);
+    if(t.result_cipher) appendMsg('asst', '（结果已 E2EE 加密，待解密）');
+    else if(t.status==='confirming') appendApproval({ taskId:t.id, reason:'高风险动作待确认' });
+  }
+  function appendMsg(role, text){
+    var m=document.createElement('div'); m.className='msg '+role;
+    m.innerHTML='<div class="bubble">'+esc(text)+'</div>';
+    $('chat').appendChild(m);
+  }
+  function appendApproval(a){
+    var c=document.createElement('div'); c.className='appr-card';
+    c.innerHTML='<div class="appr-title">需要授权</div><div class="appr-reason">'+esc(a.reason||'')+'</div>'+
+      '<div class="row"><button class="allow" data-d="allow">允许一次</button><button class="danger" data-d="deny">拒绝</button></div>';
+    c.querySelector('.allow').onclick=function(){ decide(a,'allow'); };
+    c.querySelector('[data-d="deny"]').onclick=function(){ decide(a,'deny'); };
+    $('chat').appendChild(c);
+  }
+  async function decide(a, decision){
+    try {
+      var d=await api('/v1/tasks/'+a.taskId+'/confirm', { method:'POST', body: JSON.stringify({ decision:decision, userId:state.userId }) });
+      toast(decision==='allow'?'已允许':'已拒绝'); loadTasks();
+    } catch(e){ toast('确认失败: '+e.message, true); }
+  }
+  async function sendTask() {
+    if(!state.deviceId) return toast('请先选择设备', true);
+    var text=$('taskPrompt').value.trim(); if(!text) return toast('请输入任务', true);
+    // MVP：先明文（E2EE 下一步）；promptCipher 占位以匹配后端 /v1/tasks 校验
+    try {
+      var d=await api('/v1/tasks', { method:'POST', body: JSON.stringify({
+        deviceId: state.deviceId, userId: state.userId, requireConfirm:false,
+        promptCipher:{ciphertext:btoa(unescape(encodeURIComponent(text))), nonce:'', tag:'' } }) });
+      toast('任务已下发'); $('taskPrompt').value=''; appendMsg('user', text); loadTasks();
+    } catch(e){ toast('下发失败: '+e.message, true); }
+  }
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  // ---- 装配 ----
+  function init() {
+    $('cloudUrl').value = state.baseUrl;
+    $('email').value = localStorage.getItem(LS+'email')||'';
+    $('loginBtn').addEventListener('click', doLogin);
+    $('regBtn').addEventListener('click', register);
+    $('pairBtn').addEventListener('click', pairDevice);
+    $('refreshDev').addEventListener('click', loadDevices);
+    $('backToDev').addEventListener('click', function(){ state.deviceId=null; openDeviceCache(); });
+    $('sendTask').addEventListener('click', sendTask);
+    $('cloudUrl').addEventListener('change', function(){ state.baseUrl=$('cloudUrl').value.trim(); localStorage.setItem(LS+'baseUrl', state.baseUrl); checkConn(); });
+    if(state.userId){ showLoggedIn(); loadDevices(); }
+    checkConn();
+  }
+  function openDeviceCache(){ $('chat').innerHTML=''; } // back 简化为清对话
+  init();
+})();
+</script>
+</body>
+</html>
