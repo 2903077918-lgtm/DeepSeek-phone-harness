@@ -14,7 +14,13 @@
   - 拆分：executor→`src/dsh-utils.js`（DSH RPC/事件归一化/路径）+ `src/approval-relay.js`（审批+流式缓冲）；顺带修复 `baseName` 缺定义的潜伏 ReferenceError
   - 新增：`src/protocol.js`（信封/消息类型/seq）、`src/e2ee.js`（X25519+HKDF+AES-GCM）、`src/guard.js`（风险分级）、`src/audit.js`（追加审计+hash chain）
   - 验证：`node test-core-modules.mjs` 22/22 通过；LAN 回归 verify-v2 4/4 通过；`/api/dsh-workspaces` bug 修复确认
-- **下一步候选**：阶段3 云端 Agent（cloud.mjs：WSS 出站/心跳/重连/outbox 回执/配对绑定，基于已就位的 protocol/e2ee/guard/audit）→ 需 VPS+域名授权；或手机实测最终验收
+- **最近完成**（git a94f3a7）：Agent 云端传输层 `src/transport/cloud.mjs`（WSS 出站客户端）
+  - hello 握手(deviceToken+resumeToken+pendingTasks)、心跳 ping/pong、指数退避重连、task.ack 可靠投递回执、消息分发；单测 `test-cloud-transport.mjs` 12/12 通过
+- **下一步候选**：阶段3 云端服务（复用用户现有 **Cloudflare Workers + Supabase + Vercel** 部署栈，账号经确认可直接复用 voltex 的）
+  - **Agent 侧复用 cloud.mjs 接线**（把 executor 接到云 transport，mode 增 cloud/both，用 e2ee 包任务）
+  - **云端 WS 网关**：Cloudflare Worker + Durable Objects（承接 Agent 出站长连接、任务队列、confirm.kill）——本地实现为独立 worker 项目，不塞进 voltex-ai-platform
+  - **控制面/DB**：Supabase(PG) 存设备/任务/tokens；Vercel 或 Worker 做 REST
+  - **部署执行属 L3**：需 `wrangler login`/Vercel CLI 认证（用你自己的会话执行；我不读写 .env/密钥），明确域名
 - **环境备注**：DSH web（127.0.0.1:3080）队列繁忙时（多个会话 running）exec 会排队超时——非 relay 故障，等队列清空即可
 
 ---
@@ -57,11 +63,15 @@ fc753b2 阶段2第一步（模块化拆分+双执行后端）
 - ✅ PWA：黑金版图标（鲸鱼+金边）+ manifest + 无缓存（Cache-Control no-store）
 - ✅ UI 视觉升级接线：助手头像（asst-avatar）+ 空态引导（empty-state）+ 用户气泡蓝紫渐变
 - ✅ 阶段3 前置模块拆分：executor→dsh-utils + approval-relay；新增 protocol / e2ee / guard / audit（安全基础就位，LAN 零破坏）
+- ✅ 阶段3 Agent 云端传输层：src/transport/cloud.mjs（WSS 出站/hello/心跳/退避重连/outbox 回执，单测 12/12）
 - ✅ 治理基线 + 云端架构文档 + DSH 反馈报告
 
 **待做**：
-- 阶段3 云端 Agent：基于已就位的 protocol/e2ee/guard/audit 编写 `src/transport/cloud.mjs`（WSS 出站/心跳/指数退避重连/outbox 回执/配对绑定/断线恢复），并接入 agent.mjs（mode 增 cloud/both）；需 VPS+域名+明确授权（L3）
-- 阶段3 云端服务：Fastify + ws + PG + Redis（docker-compose，单 VPS），账号+设备绑定+任务队列+状态机
+- 阶段3 Agent 侧接线：把 executor 接到 cloud transport（mode 增 cloud/both），用 e2ee 加密任务内容、guard 分级、audit 记录——本地可开发+单测（L2）
+- 阶段3 云端服务（复用现有 **Cloudflare Workers + Supabase + Vercel**，账号可直接复用；L3 部署需你执行认证/域名）：
+  - 云端 WS 网关：Cloudflare Worker + Durable Objects（承接 Agent 出站长连接、任务队列、confirm/kill、outbox）
+  - 控制面 REST：Vercel 或 Worker；数据库 Supabase(PG)：users/devices/tasks/tokens/audit
+  - 独立 worker 项目（`cloud-relay/`），不塞进 voltex-ai-platform
 - 阶段4：App 上架、支付、多租户
 - 产品化调优：审批权限预设（当前 workspace-write 下触发少）、超大 DSH 会话 history limit、通知推送
 
@@ -106,6 +116,7 @@ phone-harness/
 ├── src/e2ee.js            # X25519+HKDF+AES-GCM 端到端加密（阶段3，已就位）
 ├── src/guard.js           # 高风险指令分级+确认策略（阶段3，已就位）
 ├── src/audit.js           # 追加式审计日志+hash chain（阶段3，已就位）
+├── src/transport/cloud.mjs # 云端传输层：WSS出站客户端+心跳+重连+outbox回执（阶段3，已就位）
 ├── web/index.html         # 手机控制台 UI（v2 三层导航 + 流式 + 头像/空态）
 ├── design/                # PWA 图标源文件 + 设计稿截图 + UI 检查脚本
 ├── docs/architecture/cloud-architecture.md  # 云端设计
