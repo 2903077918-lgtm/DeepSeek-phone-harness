@@ -2,6 +2,17 @@
 
 > 目的：会话上下文压缩后，新上下文读本文件即可无缝继续。更新时间：2026-08-14。
 > 项目根：`C:\Users\Joey\Documents\phone-harness`（git 仓库）
+> 参考 Codex 规则（subagent-driven-development SKILL "Durable Progress"）：
+> 对话记忆在压缩后不保留——**信任本文件 + git log，不信任记忆**。
+
+## 〇、恢复点（压缩后从这里继续）
+
+**当前进行中的任务**：v2 升级（iOS 三层导航 + 流式 + 继续电脑会话）
+- Agent G（后端 API）、Agent H（UI v2）**在后台运行中**，产出直接写文件
+- **压缩后第一步**：检查 `git status` / `git log` 看 Agent G/H 是否已提交产出；读 `web/index.html` 和 `src/executor.js` 确认实现状态
+- **第一个未完成点**：v2 集成验证（手机实测继续会话 + 流式 + 导航）→ 提交 git → 汇报
+
+**上次完成**：审批功能（git 05b1533）+ 交接文档（100eee5）
 
 ---
 
