@@ -44,25 +44,64 @@ export class RelayDO {
   }
 
   // Worker /v1/agent/ws 升级时，经由 DurableObjectNamespace.get(id).fetch(req) 进入这里。
-  // 用 Hibernation API 接受 WebSocket。
+  // 用 Hibernation API 接受 WebSocket。内部路由 /internal/* 由控制面经 DO stub.fetch 调用。
   async fetch(request: Request): Promise<Response> {
-    // 需要升级协议
+    const url = new URL(request.url);
+
+    // 内部路由（控制面 → 设备 DO）
+    if (url.pathname.startsWith('/internal/')) {
+      return this.handleInternal(url.pathname, request);
+    }
+
+    // WS 升级：设备 DeviceId 在查询串
     const upgrade = request.headers.get('Upgrade');
     if ((upgrade || '').toLowerCase() !== 'websocket') {
       return new Response('Expected WebSocket', { status: 426 });
     }
-    const url = new URL(request.url);
     this.deviceId = url.searchParams.get('deviceId') || '';
-
-    // WebSocketPair：server 端 + client 端
     const pair = new WebSocketPair();
     const ws = pair[1]; // server side
     this.ws = ws;
     await this.state.storage.put('deviceId', this.deviceId);
-
     // Hibernation：注册该 WS；消息/关闭由系统调用 webSocketMessage/webSocketClose
     this.state.acceptWebSocket(ws);
+    await this.state.storage.put(`device:${this.deviceId}:online`, true);
     return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+
+  // ---- 控制面经 DO stub 调用的内部路由 ----
+  private async handleInternal(pathname: string, request: Request): Promise<Response> {
+    if (pathname === '/internal/submit') {
+      const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+      const taskId = String(body.taskId || '');
+      if (!taskId) return jsonr({ error: 'missing taskId' }, 400);
+      await this.addTask(taskId, {
+        taskId, promptCipher: body.promptCipher, requireConfirm: body.requireConfirm,
+        riskLevel: body.riskLevel, timeoutMs: body.timeoutMs,
+      });
+      return jsonr({ ok: true, taskId });
+    }
+    if (pathname === '/internal/confirm') {
+      const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+      const taskId = String(body.taskId || '');
+      const decision = body.decision === 'allow' ? 'allow' : 'deny';
+      await this.state.storage.put(`task:${taskId}:decision`, decision);
+      return jsonr({ ok: true, taskId, decision });
+    }
+    if (pathname === '/internal/cancel') {
+      const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+      await this.state.storage.put(`device:${this.deviceId}:cancel`, String(body.taskId || ''));
+      return jsonr({ ok: true });
+    }
+    if (pathname === '/internal/kill') {
+      await this.state.storage.put(`device:${this.deviceId}:killed`, true);
+      return jsonr({ ok: true, killed: true });
+    }
+    if (pathname === '/internal/online') {
+      const online = !!this.ws;
+      return jsonr({ ok: true, online });
+    }
+    return jsonr({ error: 'not found' }, 404);
   }
 
   // Hibernation：新消息
@@ -74,8 +113,7 @@ export class RelayDO {
 
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
     this.ws = null;
-    // 设备离线：若 Worker 端有控制面可调，可在此标记设备 offline
-    // 骨架：记录 + 可选通过 env.STORE_URL 通知
+    if (this.deviceId) await this.state.storage.put(`device:${this.deviceId}:online`, false);
   }
 
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
@@ -122,6 +160,9 @@ export class RelayDO {
   // ---- 下行下发（控制面调用 DO 的方法，生产里经 Worker fetch 路由到 DO）----
   // WebSocket Hibernation 下，从外部触发 DO 用 this.state.storage + 或由控制面经 fetch 调 addTask。
   async addTask(taskId: string, payload: Record<string, unknown>): Promise<void> {
+    // 设备 kill 期间拒绝新任务
+    const killed = await this.state.storage.get<boolean>(`device:${this.deviceId}:killed`);
+    if (killed) return;
     // 入队（断线期间积压），有连接则立即下发
     const q = (await this.state.storage.get<OutboxMsg[]>(QUEUE_KEY(this.deviceId))) || [];
     q.push({ msgId: taskId, type: MSG_TYPES.TASK_SUBMIT, payload, ts: new Date().toISOString() });
@@ -177,6 +218,10 @@ export class RelayDO {
     // 骨架：可落库（task_events / audit）——实际接 store.ts；这里仅注释占位
     void type; void payload;
   }
+}
+
+function jsonr(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
 }
 
 function newId(): string {

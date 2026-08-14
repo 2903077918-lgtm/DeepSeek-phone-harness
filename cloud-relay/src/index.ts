@@ -1,14 +1,24 @@
 // cloud-relay/src/index.ts —— Cloudflare Worker 入口：REST 控制面 + Agent WS 升级路由
 // 路由：
-//   GET  /v1/agent/ws?deviceId=xxx    —— Agent WSS 出站升级 → 路由到该设备的 RelayDO（长连接落点）
-//   GET  /v1/status                   —— 健康检查
-//   POST /v1/devices/:agentId/kill    —— 紧急停止（写 devices.status=killed），Agent 重连后生效
-//   GET  /v1/devices/:agentId         —— 查询设备状态（绑定/在线/kill）
-//   （注册/配对/任务 CRUD 由阶段3 下一步按架构文档新增）
+//   Agent WS : GET /v1/agent/ws?deviceId=xxx           → 路由到该设备 RelayDO（长连接落点）
+//   账号      : POST /v1/auth/register|login
+//   设备      : POST /v1/devices/register（Agent生成配对码） / POST /v1/devices/:agent/pair
+//               GET /v1/devices/:agent                 / POST /v1/devices/:agent/kill
+//   任务      : POST /v1/tasks（创建+推Agent）          / GET /v1/tasks?deviceId=
+//               GET /v1/tasks/:id                      / GET /v1/tasks/:id/events
+//               POST /v1/tasks/:id/confirm|cancel
+//   misc      : GET /v1/status
 //
-// 实现骨架：不包含真实密钥/服务配置；deploy 需你本地已登录 wrangler 会话执行。
+// 需要 env：SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY（wrangler secret）；未配置时 store 操作返回 503。
+// 实现含真实业务逻辑但**未部署、不含密钥**；deploy 由你本地已登录 wrangler 会话执行（L3）。
 
 import { RelayDO } from './relay.js';
+import { createSupabase } from './supabase.js';
+import {
+  upsertDevice, setDeviceStatus, createTask, updateTaskStatus, appendTaskEvent, appendAudit,
+  createUser, loginUser, generatePairCode, createPairCode, pairDeviceWithCode,
+  listTasks, getTaskById, listTaskEvents, getDeviceByAgentId,
+} from './store.js';
 import type { Env } from './bindings.js';
 
 export { RelayDO };
@@ -18,55 +28,169 @@ export default {
     const url = new URL(request.url);
     const { pathname } = url;
     const method = request.method;
+    const db = method === 'GET' && pathname.startsWith('/v1/agent/ws') ? null
+      : createDb(env); // 懒建（WS 升级不需要 DB）
 
     // ---- Agent WS 升级：路由到对应设备 RelayDO ----
     if (method === 'GET' && pathname === '/v1/agent/ws') {
       const agentId = url.searchParams.get('deviceId') || '';
-      if (!agentId) {
-        return json({ error: 'missing deviceId' }, 400);
-      }
-      const id = env.RELAY_DO.idFromName('agent:' + agentId);
-      const stub = env.RELAY_DO.get(id);
-      // 把升级请求转发给 DO（DO 负责 acceptWebSocket）
+      if (!agentId) return json({ error: 'missing deviceId' }, 400);
+      const stub = env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + agentId));
       return stub.fetch(request);
     }
-
-    // ---- 健康检查 ----
     if (method === 'GET' && pathname === '/v1/status') {
       return json({ ok: true, service: 'cloud-relay', ts: new Date().toISOString() });
     }
 
-    // ---- 紧急停止 ----
-    if (method === 'POST' && pathname.startsWith('/v1/devices/') && pathname.endsWith('/kill')) {
-      const agentId = decodeURIComponent(pathname.slice('/v1/devices/'.length, -'/kill'.length));
-      if (!agentId) return json({ error: 'missing agentId' }, 400);
-      // 骨架：直接经 DO/storage 标 killed（完整版经 store.ts 落库）
-      const id = env.RELAY_DO.idFromName('agent:' + agentId);
-      const stub = env.RELAY_DO.get(id);
-      // 通知该设备 DO 记录 kill（若设备在线，DO 会在下次通信时拒收新任务）
-      await stub.fetch(new Request('http://x/internal/kill', { method: 'POST' }));
-      // 真实持久化走 Supabase（store.setDeviceStatus）——阶段3 下一步接入
-      return json({ ok: true, agentId, action: 'kill' });
+    // 以下需要 DB；未配置 Supabase 则提示
+    if (!db) return json({ error: 'Supabase 未配置', hint: 'wrangler secret put SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY' }, 500);
+
+    // ---- 账号 ----
+    if (method === 'POST' && pathname === '/v1/auth/register') {
+      const { email, password } = await readJson(request);
+      if (!email || !password) return json({ error: 'email/password 必填' }, 400);
+      try {
+        const u = await createUser(db, String(email), String(password));
+        return json({ ok: true, userId: u.id });
+      } catch (e) { return json({ error: '注册失败: ' + String(e) }, 409); }
+    }
+    if (method === 'POST' && pathname === '/v1/auth/login') {
+      const { email, password } = await readJson(request);
+      const u = await loginUser(db, String(email), String(password));
+      if (!u) return json({ error: '邮箱或密码错误' }, 401);
+      return json({ ok: true, userId: u.id, email: u.email });
     }
 
-    // ---- 查询设备状态 ----
+    // ---- 设备注册（Agent hello 走这里：upsert + 生成配对码）----
+    if (method === 'POST' && pathname === '/v1/devices/register') {
+      const body = await readJson(request);
+      const agentId = String(body.agentId || '');
+      if (!agentId) return json({ error: 'agentId 必填' }, 400);
+      await upsertDevice(db, agentId, {
+        name: body.name, os: body.os, arch: body.arch, version: body.version, publicKeyX25519: body.publicKey,
+      });
+      const { code, codeHash } = await generatePairCode();
+      await createPairCode(db, agentId, codeHash);
+      await appendAudit(db, { deviceId: agentId, action: 'device.register' });
+      return json({ ok: true, deviceId: agentId, pairCode: code }); // 明文配对码只此一次返回给 Agent
+    }
+
+    // ---- 设备配对（手机绑定 user↔device）----
+    if (method === 'POST' && pathname.startsWith('/v1/devices/') && pathname.endsWith('/pair')) {
+      const agentId = decodeURIComponent(pathname.slice('/v1/devices/'.length, -'/pair'.length));
+      const { pairCode, userId } = await readJson(request);
+      if (!agentId || !pairCode || !userId) return json({ error: 'agentId/pairCode/userId 必填' }, 400);
+      const r = await pairDeviceWithCode(db, agentId, String(pairCode), String(userId));
+      if (!r.ok) return json({ error: r.error }, 400);
+      await appendAudit(db, { userId: String(userId), deviceId: agentId, action: 'device.pair' });
+      return json({ ok: true });
+    }
+
+    // ---- 设备查询 / 紧急停止 ----
     if (method === 'GET' && pathname.startsWith('/v1/devices/')) {
       const agentId = decodeURIComponent(pathname.slice('/v1/devices/'.length));
       if (!agentId) return json({ error: 'missing agentId' }, 400);
-      const id = env.RELAY_DO.idFromName('agent:' + agentId);
-      const stub = env.RELAY_DO.get(id);
-      const online = await stub.fetch(new Request('http://x/internal/online?deviceId=' + encodeURIComponent(agentId)));
-      const onlineBody = await online.json().catch(() => null);
-      return json({ ok: true, agentId, ...(onlineBody || {}) });
+      const dev = await getDeviceByAgentId(db, agentId);
+      return dev
+        ? json({ ok: true, device: { agentId, status: dev.status, bound: !!dev.user_id, lastSeen: dev.last_seen_at, killUntil: dev.kill_until } })
+        : json({ ok: false, error: '设备不存在' }, 404);
+    }
+    if (method === 'POST' && pathname.startsWith('/v1/devices/') && pathname.endsWith('/kill')) {
+      const agentId = decodeURIComponent(pathname.slice('/v1/devices/'.length, -'/kill'.length));
+      const dev = await getDeviceByAgentId(db, agentId);
+      if (!dev) return json({ error: '设备不存在' }, 404);
+      await setDeviceStatus(db, dev.id, 'killed');
+      // 通知该设备 DO（若在线，RelayDO 拒绝新任务）
+      await env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + agentId)).fetch(new Request('http://x/internal/kill', { method: 'POST' }));
+      await appendAudit(db, { deviceId: agentId, action: 'device.kill' });
+      return json({ ok: true, agentId, action: 'kill' });
+    }
+
+    // ---- 任务 ----
+    if (method === 'POST' && pathname === '/v1/tasks') {
+      const body = await readJson(request);
+      const { deviceId, userId, promptCipher, requireConfirm, riskLevel, timeoutMs } = body;
+      if (!deviceId || !promptCipher) return json({ error: 'deviceId/promptCipher 必填' }, 400);
+      const dev = await getDeviceByAgentId(db, String(deviceId));
+      if (!dev || !dev.user_id) return json({ error: '设备不存在或未绑定' }, 404);
+      if (dev.status === 'killed') return json({ error: '设备已 kill，拒绝新任务' }, 403);
+      const task = await createTask(db, {
+        userId: String(userId || dev.user_id), deviceId: String(deviceId),
+        promptCipher, riskLevel, requireConfirm, timeoutMs, 
+      });
+      await appendTaskEvent(db, task.id, 'task.created', {});
+      // 通知 RelayDO 下发到 Agent
+      await env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + deviceId))
+        .fetch(new Request('http://x/internal/submit', {
+          method: 'POST',
+          body: JSON.stringify({ taskId: task.id, promptCipher, requireConfirm, riskLevel, timeoutMs }),
+        }));
+      return json({ ok: true, taskId: task.id }, 201);
+    }
+    if (method === 'GET' && pathname === '/v1/tasks') {
+      const items = await listTasks(db, {
+        deviceId: url.searchParams.get('deviceId') || undefined,
+        userId: url.searchParams.get('userId') || undefined,
+        status: url.searchParams.get('status') || undefined,
+        limit: Number(url.searchParams.get('limit') || '' ) || undefined,
+      });
+      return json({ ok: true, items });
+    }
+    if (method === 'GET' && pathname.startsWith('/v1/tasks/') && pathname.endsWith('/events')) {
+      const taskId = decodeURIComponent(pathname.slice('/v1/tasks/'.length, -'/events'.length));
+      const events = await listTaskEvents(db, taskId);
+      return json({ ok: true, items: events });
+    }
+    if (method === 'GET' && pathname.startsWith('/v1/tasks/')) {
+      const taskId = decodeURIComponent(pathname.slice('/v1/tasks/'.length));
+      const t = await getTaskById(db, taskId);
+      return t ? json({ ok: true, task: t }) : json({ ok: false, error: '任务不存在' }, 404);
+    }
+    if (method === 'POST' && pathname.startsWith('/v1/tasks/') && pathname.endsWith('/confirm')) {
+      const taskId = decodeURIComponent(pathname.slice('/v1/tasks/'.length, -'/confirm'.length));
+      const { decision, userId } = await readJson(request);
+      if (decision !== 'allow' && decision !== 'deny') return json({ error: 'decision 只能 allow/deny' }, 400);
+      const t = await getTaskById(db, taskId);
+      if (!t) return json({ error: '任务不存在' }, 404);
+      await updateTaskStatus(db, taskId, decision === 'allow' ? 'running' : 'cancelled');
+      await appendTaskEvent(db, taskId, decision === 'allow' ? 'task.confirmed' : 'task.denied', { userId });
+      // 通知 Agent 确认结果
+      if (t.device_id) {
+        await env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + t.device_id)).fetch(new Request('http://x/internal/confirm', {
+          method: 'POST', body: JSON.stringify({ taskId, decision }),
+        }));
+      }
+      return json({ ok: true, taskId, decision });
+    }
+    if (method === 'POST' && pathname.startsWith('/v1/tasks/') && pathname.endsWith('/cancel')) {
+      const taskId = decodeURIComponent(pathname.slice('/v1/tasks/'.length, -'/cancel'.length));
+      const t = await getTaskById(db, taskId);
+      if (!t) return json({ error: '任务不存在' }, 404);
+      await updateTaskStatus(db, taskId, 'cancelled');
+      await appendTaskEvent(db, taskId, 'task.cancelled', {});
+      if (t.device_id) {
+        await env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + t.device_id)).fetch(new Request('http://x/internal/cancel', {
+          method: 'POST', body: JSON.stringify({ taskId }),
+        }));
+      }
+      return json({ ok: true, taskId });
     }
 
     return json({ error: 'not found' }, 404);
   },
 };
 
+function createDb(env: Env) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  // 已判空，构造 SupabaseEnv
+  const supaEnv = { SUPABASE_URL: env.SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY };
+  return createSupabase(supaEnv);
+}
+
 function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
+  return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+}
+
+async function readJson(request: Request): Promise<Record<string, any>> {
+  try { return (await request.json()) as Record<string, any>; } catch { return {}; }
 }
