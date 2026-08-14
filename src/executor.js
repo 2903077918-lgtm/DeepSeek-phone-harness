@@ -568,6 +568,7 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
     // GET /api/dsh-workspaces：workspace.list + 按 cwd 前缀重新分组
     // （workspace.sessionIds 可能不准——实测多数为空——故以 session.list 的 cwd 前缀为准，
     //  与声明的 sessionIds 取并集计数；长路径优先匹配，避免嵌套工作区归属错误）
+    // 按 basename 去重合并同名工作区（如多个 voltex-ai-platform → 1 个，sessionCount 累加）
     async listDshWorkspaces() {
       const [wsValue, slValue] = await Promise.all([
         fetchRpc('workspace.list', {}),
@@ -587,12 +588,24 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         });
         if (ws) { const set = matched.get(ws.workspaceId); if (set) set.add(s.sessionId); }
       }
-      return workspaces.map((w) => ({
-        workspaceId: w.workspaceId,
-        path: w.path,
-        title: w.title || null,
-        sessionCount: (matched.get(w.workspaceId) || new Set()).size,
-      }));
+      // 按 basename 去重合并
+      const byBasename = new Map(); // basename -> merged workspace
+      for (const w of workspaces) {
+        const bn = baseName(w.path);
+        const existing = byBasename.get(bn);
+        if (existing) {
+          existing.sessionCount += (matched.get(w.workspaceId) || new Set()).size;
+          if (!existing.title && w.title) existing.title = w.title;
+        } else {
+          byBasename.set(bn, {
+            workspaceId: w.workspaceId,
+            path: w.path,
+            title: w.title || null,
+            sessionCount: (matched.get(w.workspaceId) || new Set()).size,
+          });
+        }
+      }
+      return [...byBasename.values()];
     },
     // GET /api/dsh-sessions：session.list 归一化（title 取自 projections，零额外 RPC）
     // 可选 withCount=true：对每个会话取消息数（session.history 事件数）——只给 UI 打开的项目用，避免全量开销
