@@ -663,6 +663,17 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
     getEvents(sessionId, afterSeq) {
       return this.relay.getEvents(sessionId, afterSeq);
     },
+    // POST /api/cancel：中断正在运行的会话任务（转发 DSH session.cancel）
+    async cancelSession(sessionId) {
+      const sid = String(sessionId || '').trim();
+      if (!sid) return { ok: false, error: 'sessionId 不能为空' };
+      try {
+        const value = await fetchRpc('session.cancel', { sessionId: sid });
+        return { ok: !!(value && value.accepted), accepted: !!(value && value.accepted), sessionId: sid };
+      } catch (e) {
+        return { ok: false, error: 'session.cancel 失败: ' + String(e) };
+      }
+    },
   };
 
   // 审批转发中继：懒创建单例（首次访问 executor.relay 才建立常驻 WebSocket 连接）。

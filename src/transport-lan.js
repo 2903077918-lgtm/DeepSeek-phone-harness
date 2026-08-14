@@ -216,6 +216,15 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         sendJson(res, 200, { ok: true, ...out });
         return;
       }
+      // ---- 中断正在运行的会话任务（转发 DSH session.cancel）----
+      if (req.method === 'POST' && url.pathname === '/api/cancel') {
+        if (!auth(req, res)) return;
+        if (typeof executor.cancelSession !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const body = await readBody(req);
+        const out = await executor.cancelSession(body.sessionId);
+        sendJson(res, out.ok ? 200 : 400, out);
+        return;
+      }
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: 'not found' }));
     } catch (e) {
