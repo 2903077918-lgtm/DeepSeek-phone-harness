@@ -3,6 +3,8 @@
 // 后端选择：mode=lan 用 headless（默认）；mode=both 时 headless 保底、Web API 优先
 // 会话连续性：Web API 后端维护 sessionId 注册表（sessions.json 持久化，重启可恢复）；
 //   run 时复用调用方指定会话（或最近使用的现有会话），DSH 因此保留多轮上下文。
+// 审批转发：createApprovalRelay 常驻监听 DSH /api/events.mux 的 approval/requested 事件，
+//   把审批结果回传到 /api/respond；executor 附加懒创建的 relay 单例供 transport 使用。
 import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { DSH_CMD, TASK_TIMEOUT_MS, resolveApiKey } from './config.js';
@@ -140,6 +142,175 @@ function cryptoRandom() {
 }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+// ---- DSH 审批转发：常驻 SSE 监听 approval/requested，回传结果到 /api/respond ----
+// SSE 帧（/api/events.mux 推送，data: <json>\n\n）：
+//   {"type":"server-request","rpcId":"<uuid>","method":"approval/requested",
+//    "payload":{"type":"approval/requested","sessionId":"...","approvalId":"...",
+//               "toolName":"...","callId":"...","reason":"..."}}
+// 回传（POST /api/respond）：
+//   {"type":"client-response","rpcId":"<帧里的 rpcId>",
+//    "result":{"ok":true,"value":{"sessionId":"...","approvalId":"...","outcome":"allowed-once"|"rejected"}}}
+// 解析单个 SSE 事件块（\n\n 分隔）→ 取 data: 行 JSON；注释/心跳（":" 开头）与非 JSON 忽略。
+function parseSseBlock(block) {
+  if (!block || block.startsWith(':')) return undefined;
+  const dataLines = [];
+  let eventName;
+  for (const line of block.split('\n')) {
+    if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+    else if (line.startsWith('event:')) eventName = line.slice(6).trim();
+  }
+  if (dataLines.length === 0) return undefined;
+  try {
+    return { event: eventName, data: JSON.parse(dataLines.join('\n')) };
+  } catch {
+    return undefined;
+  }
+}
+
+// 常驻 SSE 审批中继：连接失败静默指数退避重试（1s→30s 封顶），不影响其他功能。
+// 断线重连后 pending 表保留（approvalId 仍有效，DSH 端审批未过期）。
+export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) {
+  const pending = new Map(); // approvalId -> {rpcId, sessionId, approvalId, toolName, callId, reason, receivedAt}
+  const MAX_PENDING = 50; // 上限 50 条，先进先出淘汰
+  let state = 'stopped';
+  let generation = 0; // 连接代次：stop()/重启后使旧连接的重连计划失效
+  let retryMs = 1000; // 指数退避起点
+  let retryTimer = null;
+  let abortController = null;
+  let activeWs = null; // 当前 WebSocket 连接（供 stop() 关闭）
+
+  function evictOldest() {
+    while (pending.size > MAX_PENDING) {
+      const oldest = pending.keys().next().value;
+      if (oldest === undefined) break;
+      pending.delete(oldest);
+    }
+  }
+
+  function ingest(frame) {
+    if (!frame || typeof frame !== 'object') return;
+    const p = frame.payload;
+    const isApproval = frame.method === 'approval/requested' || (p && p.type === 'approval/requested');
+    if (!isApproval) return;
+    if (!p || typeof p !== 'object') return;
+    const approvalId = String(p.approvalId || frame.rpcId || '');
+    if (!approvalId) return;
+    // 同 approvalId 重复到达 → set 覆盖并移到 Map 尾部（最新）
+    pending.set(approvalId, {
+      rpcId: frame.rpcId,
+      sessionId: p.sessionId,
+      approvalId,
+      toolName: p.toolName,
+      callId: p.callId,
+      reason: p.reason,
+      receivedAt: new Date().toISOString(),
+    });
+    evictOldest();
+  }
+
+  // 待审批列表，最新在前（Map 插入序 = 接收序，反转即最新在前）
+  function listPending() {
+    return [...pending.values()].reverse();
+  }
+
+  // 回传审批结果：用存储的 rpcId 调 /api/respond，成功才从表移除
+  async function respond({ approvalId, outcome } = {}) {
+    const rec = pending.get(approvalId);
+    if (!rec) return { ok: false, error: '未知 approvalId（可能已处理或已过期）' };
+    if (outcome !== 'allowed-once' && outcome !== 'rejected') {
+      return { ok: false, error: 'outcome 只允许 allowed-once / rejected' };
+    }
+    let resp;
+    try {
+      resp = await fetch(baseUrl + '/api/respond', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          type: 'client-response',
+          rpcId: rec.rpcId,
+          result: {
+            ok: true,
+            value: { sessionId: rec.sessionId, approvalId: rec.approvalId, outcome },
+          },
+        }),
+      });
+    } catch (e) {
+      return { ok: false, error: 'respond 请求失败: ' + String(e) };
+    }
+    if (!resp.ok) return { ok: false, error: 'respond HTTP ' + resp.status };
+    let json = null;
+    try { json = await resp.json(); } catch { /* 非 JSON 响应也视为已接受 */ }
+    if (json && (json.ok === false || json.result?.ok === false)) {
+      return { ok: false, error: JSON.stringify(json.error || json.result?.error || 'respond 被拒绝').slice(0, 300) };
+    }
+    pending.delete(approvalId);
+    return { ok: true };
+  }
+
+  function scheduleReconnect(gen) {
+    if (state !== 'running' || gen !== generation) return;
+    retryTimer = setTimeout(() => { connect(gen).catch(() => {}); }, retryMs);
+    retryMs = Math.min(retryMs * 2, 30000); // 1s → 30s 封顶
+  }
+
+  async function connect(gen) {
+    if (state !== 'running' || gen !== generation) return;
+    try {
+      // DSH 事件流是 WebSocket（/api/events.mux），不是 SSE（fetch 会 426）
+      // Node 22+ 全局 WebSocket，本机端口无需鉴权
+      const wsUrl = baseUrl.replace(/^http/, 'ws') + '/api/events.mux';
+      const ws = new WebSocket(wsUrl);
+      const stopWatchdog = setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) { try { ws.close(); } catch { /* ignore */ } }
+      }, 10000); // 10s 连接看门狗
+
+      ws.onopen = () => {
+        clearTimeout(stopWatchdog);
+        retryMs = 1000; // 连接成功即重置退避
+      };
+      ws.onmessage = (e) => {
+        try {
+          const frame = JSON.parse(String(e.data));
+          ingest(frame);
+        } catch { /* 坏帧忽略 */ }
+      };
+      ws.onclose = () => {
+        clearTimeout(stopWatchdog);
+        scheduleReconnect(gen);
+      };
+      ws.onerror = () => {
+        clearTimeout(stopWatchdog);
+        try { ws.close(); } catch { /* ignore */ }
+        scheduleReconnect(gen);
+      };
+      // 记住当前 ws，供 stop() 关闭
+      activeWs = ws;
+      ws.addEventListener('close', () => { if (activeWs === ws) activeWs = null; });
+    } catch {
+      scheduleReconnect(gen);
+    }
+  }
+
+  function start() {
+    if (state === 'running') return;
+    state = 'running';
+    generation += 1;
+    retryMs = 1000;
+    connect(generation).catch(() => {});
+  }
+
+  function stop() {
+    state = 'stopped';
+    generation += 1; // 使旧连接/重连计划失效
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+    if (activeWs) { try { activeWs.close(); } catch { /* ignore */ } activeWs = null; }
+  }
+
+  start(); // 创建即启动常驻连接（失败静默重试，不影响其他功能）
+
+  return { listPending, respond, start, stop };
+}
+
 // ---- 执行器入口：mode=both 时优先 Web API（复用会话），失败回退 headless ----
 export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
   // ---- 会话注册表：内存 Map + sessions.json 持久化（重启可恢复）----
@@ -206,7 +377,7 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
 
   loadRegistry();
 
-  return {
+  const executor = {
     mode,
     // 注册表快照（按最近使用排序），供 GET /api/sessions 使用
     listSessions() {
@@ -252,4 +423,17 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
       return runHeadless(task, onDelta);
     },
   };
+
+  // 审批转发中继：懒创建单例（首次访问 executor.relay 才建立常驻 SSE 连接）。
+  // transport 在装配时访问一次 executor.relay，即实现"服务启动即监听审批"；
+  // 不访问则不产生任何连接/定时器（lan 模式或测试场景零副作用）。
+  let relayInstance = null;
+  Object.defineProperty(executor, 'relay', {
+    enumerable: true,
+    get() {
+      if (!relayInstance) relayInstance = createApprovalRelay();
+      return relayInstance;
+    },
+  });
+  return executor;
 }

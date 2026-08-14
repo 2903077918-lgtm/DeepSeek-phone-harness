@@ -1,11 +1,13 @@
 // src/transport-lan.js —— 局域网 HTTP 传输层（8788）
 // 行为与 v0.2.0 兼容：Bearer token、/api/status|exec|history、首页加载 web/index.html；
 // v0.3.0 新增 /api/sessions（GET 列表 / POST 新建）、/api/exec 支持可选 sessionId、/api/history 支持 sessionId 过滤
+// v0.4.0 新增 /api/approvals（GET 待审批列表 / POST 回传结果）：转发 DSH 审批请求（SSE 监听 + /api/respond）
 import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { PORT, HOST, AGENT_VERSION } from './config.js';
+import { createApprovalRelay } from './executor.js';
 
 export function createLanTransport({ config, rootDir, executor, history, queue }) {
   function auth(req, res) {
@@ -29,6 +31,10 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
       req.on('error', () => resolve({}));
     });
   }
+
+  // DSH 审批转发中继：优先复用 executor 附加的 relay（懒创建，首次访问即启动常驻 SSE 连接）；
+  // executor 无 relay（如 mock）时在此自行创建。均不依赖鉴权头，失败静默退避重试。
+  const relay = executor?.relay || createApprovalRelay();
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -97,6 +103,38 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         }
         return;
       }
+      if (req.method === 'GET' && url.pathname === '/api/approvals') {
+        if (!auth(req, res)) return;
+        // 待审批列表（最新在前）；只暴露手机端需要的字段，rpcId 为内部实现细节不外泄
+        const items = relay.listPending().map((r) => ({
+          approvalId: r.approvalId,
+          sessionId: r.sessionId,
+          toolName: r.toolName,
+          callId: r.callId,
+          reason: r.reason,
+          receivedAt: r.receivedAt,
+        }));
+        sendJson(res, 200, { ok: true, items });
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/approvals') {
+        if (!auth(req, res)) return;
+        const body = await readBody(req);
+        const approvalId = String(body.approvalId || '').trim();
+        const outcome = String(body.outcome || '').trim();
+        if (!approvalId) { sendJson(res, 400, { ok: false, accepted: false, error: 'approvalId 不能为空' }); return; }
+        if (outcome !== 'allowed-once' && outcome !== 'rejected') {
+          sendJson(res, 400, { ok: false, accepted: false, error: 'outcome 只允许 allowed-once / rejected' });
+          return;
+        }
+        const result = await relay.respond({ approvalId, outcome });
+        if (!result.ok) {
+          sendJson(res, 404, { ok: false, accepted: false, error: result.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true, accepted: true });
+        return;
+      }
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: 'not found' }));
     } catch (e) {
@@ -119,5 +157,5 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
     });
     return server;
   }
-  return { start, server };
+  return { start, server, relay };
 }
