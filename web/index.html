@@ -730,6 +730,14 @@
       <div id="wsEmpty" class="dsec-empty" hidden>暂无工作区</div>
     </section>
 
+    <section class="dsec" id="ungroupedSec" hidden>
+      <h3 class="dsec-title">
+        <span>📂 未分组</span>
+        <span class="dsec-count" id="ungroupedCount"></span>
+      </h3>
+      <div id="ungroupedList"></div>
+    </section>
+
     <section class="dsec">
       <h3 class="dsec-title">
         <span>📱 我的对话</span>
@@ -1127,11 +1135,40 @@
     return c === p || c.indexOf(p + '/') === 0;
   }
 
+  // 「📂 未分组」伪项目桶：收纳 ungrouped=true 的电脑会话（层级1 展示、层级2 复用会话列表页）
+  var UNGROUPED_WS = { workspaceId: '__ungrouped__', path: '', title: '未分组', ungrouped: true };
+
   function projectSessions(ws) {
     if (!ws) return [];
-    var list = state.dshSessions.filter(function (s) { return cwdUnder(s.cwd, ws.path); });
+    var list;
+    if (ws.ungrouped) {
+      list = state.dshSessions.filter(function (s) { return s.ungrouped === true; });
+    } else {
+      list = state.dshSessions.filter(function (s) { return cwdUnder(s.cwd, ws.path); });
+    }
     list.sort(function (a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
     return list;
+  }
+
+  // 按需拉取消息数（messageCount）：只给打开的项目会话列表用，避免全量开销。
+  // withCount=true 会为每个会话读一次历史计数，因此仅进入层级2 时触发一次并合并回 state.dshSessions。
+  async function loadDshSessionCounts() {
+    if (!state.token) return;
+    try {
+      var r = await api('/api/dsh-sessions?withCount=true', { timeoutMs: 12000 });
+      var items = (r && r.items) || [];
+      var byId = {};
+      items.forEach(function (s) { byId[s.sessionId] = s; });
+      state.dshSessions.forEach(function (s) {
+        var match = byId[s.sessionId];
+        if (match && typeof match.messageCount === 'number') s.messageCount = match.messageCount;
+        else s.messageCount = undefined;
+      });
+      renderSessionsPage();
+      renderProjects();
+    } catch (e) {
+      // 计数加载失败不阻塞：列表仍可用，只是不显示消息数
+    }
   }
 
   function onProjectsOpened() {
@@ -1200,6 +1237,31 @@
       wsBox.appendChild(item);
     });
 
+    // 未分组项目桶（存在 ungrouped 电脑会话时显示，点击复用会话列表页）
+    var ungroupedSec = $('ungroupedSec');
+    var ungroupedList = $('ungroupedList');
+    if (ungroupedSec) {
+      var hasUngrouped = state.dshOk && projectSessions(UNGROUPED_WS).length > 0;
+      ungroupedSec.hidden = !hasUngrouped;
+    }
+    if (ungroupedList) {
+      ungroupedList.textContent = '';
+      if (state.dshOk && ungroupedSec && !ungroupedSec.hidden) {
+        var upCount = projectSessions(UNGROUPED_WS).length;
+        $('ungroupedCount').textContent = upCount ? upCount + ' 个会话' : '';
+        var uitem = document.createElement('button');
+        uitem.type = 'button';
+        uitem.className = 'ws-item';
+        uitem.innerHTML =
+          '<span class="ws-icon">📂</span>' +
+          '<span class="ws-main"><span class="ws-title">未分组</span>' +
+          '<span class="ws-path">cwd 未匹配任何工作区</span></span>' +
+          '<span class="badge">' + upCount + '</span>';
+        uitem.addEventListener('click', function () { openProject(UNGROUPED_WS); });
+        ungroupedList.appendChild(uitem);
+      }
+    }
+
     // 我的对话（本地会话）
     var locals = state.sessions.filter(function (s) {
       if (!q) return true;
@@ -1251,6 +1313,8 @@
     if (!state.dshOk) loadDshSessions(true);
     renderSessionsPage();
     navPush(2);
+    // 进入会话列表后按需补齐 messageCount（用 withCount=true 加载，避免常驻全量开销）
+    loadDshSessionCounts();
   }
 
   /* ================= 层级 2：会话列表 ================= */
@@ -1279,6 +1343,7 @@
       var title = s.title || baseName(s.cwd) || '未命名会话';
       main.appendChild(el('div', 'sess-title', title));
       var meta = String(s.cwd || '');
+      if (typeof s.messageCount === 'number' && s.messageCount >= 0) meta += (meta ? ' · ' : '') + s.messageCount + ' 条消息';
       if (s.updatedAt) meta += (meta ? ' · ' : '') + fmtAgo(s.updatedAt);
       main.appendChild(el('div', 'sess-meta', meta));
       main.addEventListener('click', function () { openDshSession(ws, s); });
@@ -1863,31 +1928,59 @@
     if (st && st.done && st.el && st.el.cursor) st.el.cursor.style.display = 'none';
   }
 
+  // kind 驱动的事件处理（/api/events 标准化类型：text / thinking / tool / done / other）。
+  //   text → 可见文本增量（打字机追加）；tool → 工具进度行；
+  //   done → turn 结束（终止流式，由 finalizeStream 定稿）；thinking → 推理内容（默认隐藏/忽略）；
+  //   other → 忽略或透传。kind 缺失（老后端）时退回按原始 type 猜测，保留既有行为。
   var TERMINAL_TYPES = ['done', 'complete', 'end', 'finished', 'error', 'failed', 'result'];
   var TOOL_START_TYPES = ['tool', 'tool_start', 'tool_call', 'call', 'tool_started'];
   var TOOL_END_TYPES = ['tool_done', 'tool_end', 'tool_result', 'tool_complete'];
 
   function handleEventItem(st, it) {
-    var type = String(it.type || '').toLowerCase();
+    var kind = String(it.kind || '');
     var text = it.text != null ? String(it.text) : '';
-    if (TERMINAL_TYPES.indexOf(type) >= 0) {
+    if (kind === 'text') {
+      if (text) st.buf += text; // 可见文本增量
+      return;
+    }
+    if (kind === 'tool') {
+      // 工具调用：显示工具进度行（流式期间无一次性完成判定，先按运行中处理）
+      st.tools.push({ name: text || '调用工具…', done: false });
+      return;
+    }
+    if (kind === 'done') {
+      // turn 结束：终止流式，实际的定稿交给 finalizeStream
       st.done = true;
       if (text) st.buf += text;
       return;
     }
-    if (TOOL_END_TYPES.indexOf(type) >= 0) {
-      st.tools.push({ name: text || '工具完成', done: true });
+    if (kind === 'thinking') return;   // 推理内容：默认隐藏/折叠（不占用可见文本）
+    if (kind === 'other') return;      // 显式忽略或透传
+    if (kind === '') {
+      // 老接口（无 kind 字段）：保留原有按原始 type 猜测的逻辑
+      var type = String(it.type || '').toLowerCase();
+      if (TERMINAL_TYPES.indexOf(type) >= 0) {
+        st.done = true;
+        if (text) st.buf += text;
+        return;
+      }
+      if (TOOL_END_TYPES.indexOf(type) >= 0) {
+        st.tools.push({ name: text || '工具完成', done: true });
+        return;
+      }
+      if (TOOL_START_TYPES.indexOf(type) >= 0) {
+        st.tools.push({ name: text || '调用工具…', done: false });
+        return;
+      }
+      if (type === 'stderr' || type === 'error_text') {
+        if (text) st.errBuf += text;
+        return;
+      }
+      if (text) st.buf += text; // 未知类型：尽量当增量文本
       return;
     }
-    if (TOOL_START_TYPES.indexOf(type) >= 0) {
-      st.tools.push({ name: text || '调用工具…', done: false });
-      return;
-    }
-    if (type === 'stderr' || type === 'error_text') {
-      if (text) st.errBuf += text;
-      return;
-    }
-    if (text) st.buf += text; // 未知类型：尽量当增量文本
+    // kind 存在但无法识别：兜底——带 text 的一律当可见文本增量
+    if (text) st.buf += text;
   }
 
   async function pollEvents() {
