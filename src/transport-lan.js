@@ -1,7 +1,7 @@
 // src/transport-lan.js —— 局域网 HTTP 传输层（8788）
 // 行为与 v0.2.0 兼容：Bearer token、/api/status|exec|history、首页加载 web/index.html；
 // v0.3.0 新增 /api/sessions（GET 列表 / POST 新建）、/api/exec 支持可选 sessionId、/api/history 支持 sessionId 过滤
-// v0.4.0 新增 /api/approvals（GET 待审批列表 / POST 回传结果）：转发 DSH 审批请求（SSE 监听 + /api/respond）
+// v0.4.0 新增 /api/approvals（GET 待审批列表 / POST 回传结果）：转发 DSH 审批请求（WebSocket 监听 + /api/respond）
 import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
@@ -32,8 +32,9 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
     });
   }
 
-  // DSH 审批转发中继：优先复用 executor 附加的 relay（懒创建，首次访问即启动常驻 SSE 连接）；
-  // executor 无 relay（如 mock）时在此自行创建。均不依赖鉴权头，失败静默退避重试。
+  // DSH 审批转发中继：优先复用 executor 附加的 relay（懒创建，首次访问即启动常驻 WebSocket 连接
+  // 到 ws://127.0.0.1:3080/api/events.mux）；executor 无 relay（如 mock）时在此自行创建。
+  // 均不依赖鉴权头，失败静默退避重试。
   const relay = executor?.relay || createApprovalRelay();
 
   const server = http.createServer(async (req, res) => {

@@ -142,32 +142,17 @@ function cryptoRandom() {
 }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-// ---- DSH 审批转发：常驻 SSE 监听 approval/requested，回传结果到 /api/respond ----
-// SSE 帧（/api/events.mux 推送，data: <json>\n\n）：
-//   {"type":"server-request","rpcId":"<uuid>","method":"approval/requested",
-//    "payload":{"type":"approval/requested","sessionId":"...","approvalId":"...",
-//               "toolName":"...","callId":"...","reason":"..."}}
-// 回传（POST /api/respond）：
-//   {"type":"client-response","rpcId":"<帧里的 rpcId>",
+// ---- DSH 审批转发：常驻 WebSocket 监听 approval/requested，回传结果到 /api/respond ----
+// 事件流（探测结论）：/api/events.mux 是 WebSocket 而非 SSE —— 普通 fetch 返回 426 upgrade required。
+//   用 Node 22+ 全局 WebSocket（零依赖、无需鉴权头）连 ws://127.0.0.1:3080/api/events.mux，
+//   收到 JSON 文本帧：{"type":"server-request","rpcId":"<uuid>","method":"approval/requested",
+//                     "payload":{"type":"approval/requested","sessionId":"...","approvalId":"...",
+//                                "toolName":"...","callId":"...","reason":"..."}}
+//   rpcId 在帧外层（envelope.rpcId），approvalId 在 payload.approvalId，method 为事件类型。
+// 回传（HTTP POST /api/respond）：
+//   {"type":"client-response","rpcId":"<帧外层 rpcId>",
 //    "result":{"ok":true,"value":{"sessionId":"...","approvalId":"...","outcome":"allowed-once"|"rejected"}}}
-// 解析单个 SSE 事件块（\n\n 分隔）→ 取 data: 行 JSON；注释/心跳（":" 开头）与非 JSON 忽略。
-function parseSseBlock(block) {
-  if (!block || block.startsWith(':')) return undefined;
-  const dataLines = [];
-  let eventName;
-  for (const line of block.split('\n')) {
-    if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
-    else if (line.startsWith('event:')) eventName = line.slice(6).trim();
-  }
-  if (dataLines.length === 0) return undefined;
-  try {
-    return { event: eventName, data: JSON.parse(dataLines.join('\n')) };
-  } catch {
-    return undefined;
-  }
-}
-
-// 常驻 SSE 审批中继：连接失败静默指数退避重试（1s→30s 封顶），不影响其他功能。
+// 常驻审批中继：连接失败静默指数退避重试（1s→30s 封顶），不影响其他功能；
 // 断线重连后 pending 表保留（approvalId 仍有效，DSH 端审批未过期）。
 export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) {
   const pending = new Map(); // approvalId -> {rpcId, sessionId, approvalId, toolName, callId, reason, receivedAt}
@@ -176,7 +161,6 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
   let generation = 0; // 连接代次：stop()/重启后使旧连接的重连计划失效
   let retryMs = 1000; // 指数退避起点
   let retryTimer = null;
-  let abortController = null;
   let activeWs = null; // 当前 WebSocket 连接（供 stop() 关闭）
 
   function evictOldest() {
@@ -249,7 +233,8 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
 
   function scheduleReconnect(gen) {
     if (state !== 'running' || gen !== generation) return;
-    retryTimer = setTimeout(() => { connect(gen).catch(() => {}); }, retryMs);
+    if (retryTimer) return; // onerror+onclose 双触发只排一次重连，退避只推进一次
+    retryTimer = setTimeout(() => { retryTimer = null; connect(gen).catch(() => {}); }, retryMs);
     retryMs = Math.min(retryMs * 2, 30000); // 1s → 30s 封顶
   }
 
@@ -269,6 +254,7 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
         retryMs = 1000; // 连接成功即重置退避
       };
       ws.onmessage = (e) => {
+        if (state !== 'running' || gen !== generation) return; // stop()/换代后忽略迟到帧
         try {
           const frame = JSON.parse(String(e.data));
           ingest(frame);
@@ -303,7 +289,10 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
     state = 'stopped';
     generation += 1; // 使旧连接/重连计划失效
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
-    if (activeWs) { try { activeWs.close(); } catch { /* ignore */ } activeWs = null; }
+    if (activeWs) {
+      const s = activeWs; activeWs = null;
+      try { s.onopen = s.onmessage = s.onerror = s.onclose = null; s.close(); } catch { /* ignore */ }
+    }
   }
 
   start(); // 创建即启动常驻连接（失败静默重试，不影响其他功能）
@@ -424,7 +413,7 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
     },
   };
 
-  // 审批转发中继：懒创建单例（首次访问 executor.relay 才建立常驻 SSE 连接）。
+  // 审批转发中继：懒创建单例（首次访问 executor.relay 才建立常驻 WebSocket 连接）。
   // transport 在装配时访问一次 executor.relay，即实现"服务启动即监听审批"；
   // 不访问则不产生任何连接/定时器（lan 模式或测试场景零副作用）。
   let relayInstance = null;
