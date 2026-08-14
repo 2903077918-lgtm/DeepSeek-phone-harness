@@ -32,11 +32,13 @@ export function createCloudService(opts = {}) {
     return deriveP256Key(agentPrivate, payload.senderKey, payload.salt);
   }
 
-  // 解密任务 prompt：E2EE 密文（pay.senderKey+salt 派生）→ 明文；否则回退 payload.prompt
+  // 解密任务 prompt：E2EE 密文（senderKey+salt 派生）→ 明文；否则回退 payload.prompt
+  // 约定：prompt 的 AAD 用固定 'ph-task'（任务 id 下发前未知，因此不能在 AAD 里携带 taskId）
+  const PROMPT_AAD = 'ph-task';
   async function promptOf(payload) {
     const key = await taskKey(payload);
     if (key && payload && typeof payload.promptCipher === 'object') {
-      const p = await decryptP256(key, payload.promptCipher, String(payload.taskId || ''));
+      const p = await decryptP256(key, payload.promptCipher, PROMPT_AAD);
       if (p) return new TextDecoder().decode(p);
     }
     return payload && typeof payload.prompt === 'string' ? payload.prompt : '';

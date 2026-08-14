@@ -103,7 +103,8 @@
 
 <div class="toast" id="toast"></div>
 
-<script>
+<script type="module">
+import { generateKeyPair, deriveSessionKey, generateKeySalt, encrypt, decrypt } from './e2ee-web.js';
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
@@ -117,6 +118,7 @@
     email: localStorage.getItem(LS + 'email') || '',
     deviceId: null,     // 当前选中设备 agentId
     taskId: null,       // 当前对话任务
+    phoneKey: null,     // 手机 P-256 E2EE 密钥对 {privateKey,publicKey}（本机生成，持久化）
   };
 
   var CONFIRM_BTN = { ok: {t:'允许一次',c:'btn ok'}, no: {t:'拒绝',c:'btn no'} };
@@ -236,12 +238,57 @@
       box.appendChild(it);
     });
   }
+  // ---- E2EE：手机本地生成密钥对（P-256），用设备公钥派生会话密钥，加密任务/解密结果 ----
+  // 约定（与 Agent src/cloud-service 一致）：prompt 加解密 AAD='ph-task'；结果加解密 AAD=taskId；
+  // salt 每任务随机并随任务下发，手机记录 taskId→salt 供解密该任务结果。
+  var PROMPT_AAD = 'ph-task';
+  var saltByTask = load('salt', {});
+  function saveSaltByTask(){ save('salt', saltByTask); }
+
+  function ensurePhoneKey(){
+    if (state.phoneKey) return Promise.resolve(state.phoneKey);
+    var saved = localStorage.getItem(LS + 'pkey');
+    if (saved) { try { state.phoneKey = JSON.parse(saved); return Promise.resolve(state.phoneKey); } catch(e){} }
+    return generateKeyPair().then(function(pair){
+      state.phoneKey = pair;
+      localStorage.setItem(LS + 'pkey', JSON.stringify(pair));   // 手机私钥本机存
+      return pair;
+    });
+  }
+  async function getDeviceE2ee(agentId){
+    var d = await api('/v1/devices/' + encodeURIComponent(agentId));  // 返回 device.publicKey
+    if (!d || !d.device || !d.device.publicKey) return null;
+    try { return JSON.parse(d.device.publicKey); } catch(e){ return null; } // Agent 的 P-256 公钥 JWK
+  }
+
   function openTask(t){
     state.taskId=t.id;
     $('chat').innerHTML='';
-    appendMsg('user', (t.prompt_cipher?'[密文任务（E2EE 后续）]':'') + '任务 ' + t.id.slice(0,8) + ' · ' + t.status);
-    if(t.result_cipher) appendMsg('asst', '（结果已 E2EE 加密，待解密）');
-    else if(t.status==='confirming') appendApproval({ taskId:t.id, reason:'高风险动作待确认' });
+    if (t.prompt_cipher) appendMsg('user', '[加密任务] ' + t.id.slice(0,8));
+    else appendMsg('user', '任务 ' + t.id.slice(0,8));
+    appendMsg('asst', '状态：' + (t.status||'queued'));
+    if (t.result_cipher) {
+      decryptResult(t).then(function(plain){
+        if (plain) appendMsg('asst', plain);
+        else appendMsg('asst', '（结果密文，无对应密钥/salt 时待解密）');
+      });
+    } else if(t.status==='confirming'){
+      appendApproval({ taskId:t.id, reason:'高风险动作待确认' });
+    }
+  }
+  async function decryptResult(t){
+    try {
+      var phone = await ensurePhoneKey();
+      var agentPub = await getDeviceE2ee(state.deviceId);
+      var salt = saltByTask[t.id];
+      if (!agentPub || !t.result_cipher) return null;
+      var key = await deriveSessionKey(phone.privateKey, agentPub, salt);
+      var r = await decrypt(key, {
+        ciphertext: t.result_cipher.ciphertext, iv: t.result_cipher.iv || t.result_cipher.nonce, tag: t.result_cipher.tag
+      }, t.id);   // 结果 AAD = taskId
+      if (!r) return null;
+      return new TextDecoder().decode(r);
+    } catch(e){ return null; }
   }
   function appendMsg(role, text){
     var m=document.createElement('div'); m.className='msg '+role;
@@ -265,12 +312,19 @@
   async function sendTask() {
     if(!state.deviceId) return toast('请先选择设备', true);
     var text=$('taskPrompt').value.trim(); if(!text) return toast('请输入任务', true);
-    // MVP：先明文（E2EE 下一步）；promptCipher 占位以匹配后端 /v1/tasks 校验
+    var salt = generateKeySalt();
+    var phone = await ensurePhoneKey();
+    var agentPub = await getDeviceE2ee(state.deviceId);
+    if (!agentPub) { toast('设备未就绪（缺 E2EE 公钥），请重新绑定'); return; }
     try {
+      var key = await deriveSessionKey(phone.privateKey, agentPub, salt);
+      var box = await encrypt(key, text, PROMPT_AAD);   // prompt AAD = 'ph-task'
       var d=await api('/v1/tasks', { method:'POST', body: JSON.stringify({
         deviceId: state.deviceId, userId: state.userId, requireConfirm:false,
-        promptCipher:{ciphertext:btoa(unescape(encodeURIComponent(text))), nonce:'', tag:'' } }) });
-      toast('任务已下发'); $('taskPrompt').value=''; appendMsg('user', text); loadTasks();
+        promptCipher: box, salt: salt, senderKey: phone.publicKey
+      }) });
+      if (d && d.taskId) { saltByTask[d.taskId] = salt; saveSaltByTask(); }  // 记 salt 供解密结果
+      toast('任务已加密下发'); $('taskPrompt').value=''; appendMsg('user', text); loadTasks();
     } catch(e){ toast('下发失败: '+e.message, true); }
   }
 

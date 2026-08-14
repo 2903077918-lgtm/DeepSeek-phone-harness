@@ -15,6 +15,7 @@ import { createExecutor } from './src/executor.js';
 import { createLanTransport } from './src/transport-lan.js';
 import { createCloudTransport } from './src/transport/cloud.mjs';
 import { createCloudService } from './src/cloud-service.mjs';
+import { ensureE2EEKey, registerDevice, restBaseFromWs } from './src/cloud-register.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = __dirname;
@@ -45,9 +46,28 @@ if (mode === 'both' || mode === 'cloud') {
   const cloudCfg = config.cloud;
   if (cloudCfg && cloudCfg.url && cloudCfg.deviceToken) {
     try {
+      // 1. 确保 E2EE 密钥就位（P-256 私钥本机持久化，公钥注册上报）
+      const CONFIG_PATH = path.join(ROOT_DIR, 'config.json');
+      const e2ee = await ensureE2EEKey(config, CONFIG_PATH);
+      // 2. 尝试 REST 注册设备 + 上报公钥，拿配对码提示用户
+      const restBase = restBaseFromWs(cloudCfg.url);
+      const agentId = cloudCfg.deviceId || 'agent-' + crypto.randomBytes(4).toString('hex');
+      if (restBase && e2ee.publicKey) {
+        try {
+          const pairCode = await registerDevice({
+            host: restBase, agentId,
+            publicKey: e2ee.publicKey,
+            name: cloudCfg.deviceName || agentId,
+          });
+          if (pairCode) console.log('[deepseekharness-relay] 设备配对码: ' + pairCode + '（15 分钟内到手机 cloud.html 输入绑定）');
+        } catch (e) {
+          console.warn('[deepseekharness-relay] 设备上报失败（可稍后手动注册）: ' + e.message);
+        }
+      }
+
       const transport = createCloudTransport({
         url: cloudCfg.url,
-        deviceId: cloudCfg.deviceId || 'agent-' + crypto.randomBytes(4).toString('hex'),
+        deviceId: agentId,
         deviceToken: cloudCfg.deviceToken,
         resumeToken: cloudCfg.resumeToken || null,
         version: AGENT_VERSION,
