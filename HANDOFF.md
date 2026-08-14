@@ -7,10 +7,14 @@
 
 ## 〇、恢复点（压缩后从这里继续）
 
-**当前状态**：v2 升级已全部提交；UI 视觉升级接线刚完成（git c46b99e）
+**当前状态**：v2 + UI 视觉升级 + 阶段3 前置模块拆分均已完成并提交
 - v2（三层导航+流式+继续电脑会话）、中断任务、Agent 活动页、PWA 黑金图标、工作区去重均已完成并提交
-- **上次完成**：UI 视觉升级接线（助手头像 asst-avatar + 空态引导 empty-state + 用户气泡，git c46b99e，附设计资产 fa0c726/cc9cd62）
-- **下一步候选**：阶段3 云端中转（WSS+E2EE+配对，见 docs/architecture/cloud-architecture.md）；手机实测最终验收
+- UI 视觉升级接线（git c46b99e）：助手头像 asst-avatar + 空态引导 empty-state + 用户气泡
+- **上次完成**（git 43f9546）：阶段3 前置——模块拆分 + 新增安全基础模块 + 单测 22 项
+  - 拆分：executor→`src/dsh-utils.js`（DSH RPC/事件归一化/路径）+ `src/approval-relay.js`（审批+流式缓冲）；顺带修复 `baseName` 缺定义的潜伏 ReferenceError
+  - 新增：`src/protocol.js`（信封/消息类型/seq）、`src/e2ee.js`（X25519+HKDF+AES-GCM）、`src/guard.js`（风险分级）、`src/audit.js`（追加审计+hash chain）
+  - 验证：`node test-core-modules.mjs` 22/22 通过；LAN 回归 verify-v2 4/4 通过；`/api/dsh-workspaces` bug 修复确认
+- **下一步候选**：阶段3 云端 Agent（cloud.mjs：WSS 出站/心跳/重连/outbox 回执/配对绑定，基于已就位的 protocol/e2ee/guard/audit）→ 需 VPS+域名授权；或手机实测最终验收
 - **环境备注**：DSH web（127.0.0.1:3080）队列繁忙时（多个会话 running）exec 会排队超时——非 relay 故障，等队列清空即可
 
 ---
@@ -21,9 +25,10 @@
 目标：抢在 DeepSeek 官方之前做出来，iOS/Android 上架，开源引流 + 收费。
 架构：手机 App/网页 → （未来云端）→ 电脑端 Agent → DSH headless/Web API 执行。
 
-## 二、当前进度（git 13 个提交）
+## 二、当前进度（git 14 个提交）
 
 ```
+43f9546 阶段3前置: 模块拆分(executor→dsh-utils+approval-relay) + 新增protocol/e2ee/guard/audit + 单测22项
 cc9cd62 chore: 补充UI检查脚本与设计稿截图(design辅助资产)
 fa0c726 chore: 记录运行时测试数据 + 补充PWA图标产物
 c46b99e UI视觉升级接线: 助手头像+空态引导+用户气泡(完成WIP CSS→JS)
@@ -51,10 +56,12 @@ fc753b2 阶段2第一步（模块化拆分+双执行后端）
 - ✅ 会话 API：/api/sessions（GET/POST）、/api/history（?sessionId= 过滤）、/api/dsh-workspaces、/api/dsh-sessions（withCount/ungrouped）
 - ✅ PWA：黑金版图标（鲸鱼+金边）+ manifest + 无缓存（Cache-Control no-store）
 - ✅ UI 视觉升级接线：助手头像（asst-avatar）+ 空态引导（empty-state）+ 用户气泡蓝紫渐变
+- ✅ 阶段3 前置模块拆分：executor→dsh-utils + approval-relay；新增 protocol / e2ee / guard / audit（安全基础就位，LAN 零破坏）
 - ✅ 治理基线 + 云端架构文档 + DSH 反馈报告
 
 **待做**：
-- 阶段3：云端中转（WSS+E2EE+配对，见 docs/architecture/cloud-architecture.md）
+- 阶段3 云端 Agent：基于已就位的 protocol/e2ee/guard/audit 编写 `src/transport/cloud.mjs`（WSS 出站/心跳/指数退避重连/outbox 回执/配对绑定/断线恢复），并接入 agent.mjs（mode 增 cloud/both）；需 VPS+域名+明确授权（L3）
+- 阶段3 云端服务：Fastify + ws + PG + Redis（docker-compose，单 VPS），账号+设备绑定+任务队列+状态机
 - 阶段4：App 上架、支付、多租户
 - 产品化调优：审批权限预设（当前 workspace-write 下触发少）、超大 DSH 会话 history limit、通知推送
 
@@ -91,13 +98,19 @@ phone-harness/
 ├── src/config.js          # 常量/API key
 ├── src/history.js         # 历史
 ├── src/queue.js           # FIFO 队列
-├── src/executor.js        # 执行器+会话注册+审批relay+dsh同步API
+├── src/dsh-utils.js       # DSH RPC/事件归一化/路径工具（拆自 executor）
+├── src/approval-relay.js  # 审批转发 + 会话事件流缓冲（拆自 executor）
+├── src/executor.js        # 执行器+会话注册+dsh同步API（精简后）
 ├── src/transport-lan.js   # 8788 HTTP（含 /api/dsh-*、/api/cancel、/api/agents）
+├── src/protocol.js        # 云端通信信封/消息类型/seq（阶段3，已就位）
+├── src/e2ee.js            # X25519+HKDF+AES-GCM 端到端加密（阶段3，已就位）
+├── src/guard.js           # 高风险指令分级+确认策略（阶段3，已就位）
+├── src/audit.js           # 追加式审计日志+hash chain（阶段3，已就位）
 ├── web/index.html         # 手机控制台 UI（v2 三层导航 + 流式 + 头像/空态）
 ├── design/                # PWA 图标源文件 + 设计稿截图 + UI 检查脚本
 ├── docs/architecture/cloud-architecture.md  # 云端设计
 ├── docs/deepseekharness-relay-方案.md        # 产品方案
 ├── docs/API文档.md         # 全部端点 + kind 枚举
 ├── PROJECT_STATE.md       # 协作基线
-└── test-*.mjs / verify-v2.mjs  # 集成验证
+└── test-*.mjs / test-core-modules.mjs / verify-v2.mjs  # 单测 + 集成验证
 ```
