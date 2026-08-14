@@ -20,11 +20,11 @@
 **已验证**：Supabase 库已建、schema 已跑；设备注册/配对/创建加密任务(senderKey/salt落库) 本地能通(用真实Supabase+esbuild bundle)。
 
 **后续（部署到Vercel，L3）**：
-1. 已确认部署方向=Vercel+Supabase+Cloudflare域名；voltex可作部署参考(用`setx`设系统env: SUPABASE_URL/SERVICE_ROLE_KEY)
-2. 需要：把 cloud-relay 的 fetch handler 包成 Vercel Function 入口 + `vercel.json`，设 env，`vercel deploy`/`vercel --prod` 绑定域名
-3. 本机 Supabase 库 tasks 表已 ALTER 补 `sender_key`,`salt` 列
-4. Agent 填 `config.json.cloud` → `node agent.mjs --mode=cloud`
-⚠️ service_role key 留过对话记录，建议较 Supabase 重新生成。本地调试 curl 发 POST body 在 miniflare/serverless 读不到(用真实浏览器/PowerShell)；本地 bundle-server 端到端调试不可靠(网络不稳定)。
+1. **Vercel 入口已就绪**：`cloud-relay/api/index.ts`(从process.env读SUPABASE) + `vercel.json` + `docs/DEPLOY-VERCEL.md`(全流程)
+2. **关键阻塞**：本机网络连不上 `api.vercel.com` 和 `api.cloudflare.com`（都返回000）→ `vercel/wrangler` CLI 在本机无法部署。**需换能访问 api.* 的网络**（手机热点/Wi-Fi/关代理）执行 `npx vercel login` → `npx vercel env add ...` → `npx vercel --prod`；voltex 可作部署参考
+3. 部署拿域名后：`phone-harness/config.json` 填 `cloud:{url,deviceId,token,e2ee.privateKey,confirmPolicy,pollIntervalMs}` → `node agent.mjs --mode=cloud`；手机 cloud.html 连域名
+4. Supabase 库 tasks 表已 ALTER 补 `sender_key`,`salt` 列；service_role key 留过对话记录，建议重新生成
+⚠️ 本地 wrangler dev / esbuild-bundle 起 cloud-relay 调试不稳(反复超时)；核心逻辑已被单测覆盖。部署验证前勿再在本地 dev server 上死磕。
 
 **环境备注**：DSH(127.0.0.1:3080)队列忙时 exec 排队超时；本机 8787 被 codex-relay 占用，cloud-relay 本地用 8790/8791；curl 发 POST body 在 Miniflare 读不到(用 PowerShell/浏览器实测)。
 
