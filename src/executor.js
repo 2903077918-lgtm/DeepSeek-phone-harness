@@ -596,16 +596,29 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
     },
     // GET /api/dsh-sessions：session.list 归一化（title 取自 projections，零额外 RPC）
     // 可选 withCount=true：对每个会话取消息数（session.history 事件数）——只给 UI 打开的项目用，避免全量开销
+    // 标注 ungrouped=true：cwd 不匹配任何工作区路径的会话（供 UI 显示"未分组"桶）
     async listDshSessions(withCount) {
-      const value = await fetchRpc('session.list', {});
-      const items = ((value && value.items) || []).map((s) => ({
-        sessionId: s.sessionId,
-        cwd: s.cwd,
-        title: (s.projections && s.projections.values && s.projections.values.title) || undefined,
-        updatedAt: isoTime(s.updatedAt),
-        running: !!s.running,
-        blank: !!s.blank,
-      }));
+      const [slValue, wsValue] = await Promise.all([
+        fetchRpc('session.list', {}),
+        fetchRpc('workspace.list', {}),
+      ]);
+      const wsPaths = ((wsValue && wsValue.items) || [])
+        .map((w) => normPath(w.path))
+        .filter(Boolean)
+        .sort((a, b) => b.length - a.length); // 最长前缀优先
+      const items = ((slValue && slValue.items) || []).map((s) => {
+        const cwd = normPath(s.cwd);
+        const inWorkspace = cwd && wsPaths.some((p) => cwd === p || cwd.startsWith(p + '/'));
+        return {
+          sessionId: s.sessionId,
+          cwd: s.cwd,
+          title: (s.projections && s.projections.values && s.projections.values.title) || undefined,
+          updatedAt: isoTime(s.updatedAt),
+          running: !!s.running,
+          blank: !!s.blank,
+          ungrouped: !inWorkspace,
+        };
+      });
       if (withCount) {
         await Promise.all(items.map(async (s) => {
           try {
