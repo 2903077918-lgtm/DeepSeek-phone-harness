@@ -1,18 +1,18 @@
-// cloud-relay/src/index.ts —— Cloudflare Worker 入口：REST 控制面 + Agent WS 升级路由
+// cloud-relay/src/index.ts —— 纯 REST 控制面（可部署 Vercel，无 Cloudflare Durable Object/WS）
+// Agent 走轮询：GET /v1/poll 拉本设备任务 + POST /v1/agent/tasks/:id/result 回传结果。
 // 路由：
-//   Agent WS : GET /v1/agent/ws?deviceId=xxx           → 路由到该设备 RelayDO（长连接落点）
 //   账号      : POST /v1/auth/register|login
-//   设备      : POST /v1/devices/register（Agent生成配对码） / POST /v1/devices/:agent/pair
-//               GET /v1/devices/:agent                 / POST /v1/devices/:agent/kill
-//   任务      : POST /v1/tasks（创建+推Agent）          / GET /v1/tasks?deviceId=
-//               GET /v1/tasks/:id                      / GET /v1/tasks/:id/events
+//   设备      : POST /v1/devices/register（Agent生成配对码+报公钥） / POST /v1/devices/:agent/pair
+//               GET /v1/devices/:agent                            / POST /v1/devices/:agent/kill
+//   任务      : POST /v1/tasks（创建，存senderKey/salt供E2EE）      / GET /v1/tasks?deviceId=
+//               GET /v1/tasks/:id                                 / GET /v1/tasks/:id/events
 //               POST /v1/tasks/:id/confirm|cancel
+//   轮询      : GET /v1/poll?deviceId=                            / POST /v1/agent/tasks/:id/result
 //   misc      : GET /v1/status
 //
-// 需要 env：SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY（wrangler secret）；未配置时 store 操作返回 503。
-// 实现含真实业务逻辑但**未部署、不含密钥**；deploy 由你本地已登录 wrangler 会话执行（L3）。
+// 需要 env：SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY（Vercel 环境变量 / 本地 .dev.vars）；未配置时 store 返回 503。
+// 实现含真实业务逻辑但**未部署、不含密钥**；deploy 到 Vercel 并配好 env 后即为生产。
 
-import { RelayDO } from './relay.js';
 import { createSupabase } from './supabase.js';
 import {
   upsertDevice, setDeviceStatus, createTask, updateTaskStatus, finishTask, appendTaskEvent, appendAudit,
@@ -20,8 +20,6 @@ import {
   listTasks, getTaskById, listTaskEvents, getDeviceByAgentId,
 } from './store.js';
 import type { Env } from './bindings.js';
-
-export { RelayDO };
 
 // 当前请求的 Origin（CORS；按请求同步赋值，JSON 响应同步构造，无并发覆盖）
 let reqOrigin: string | null = null;

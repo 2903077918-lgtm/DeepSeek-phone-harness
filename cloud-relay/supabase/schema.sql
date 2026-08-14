@@ -61,6 +61,8 @@ create table if not exists public.tasks (
   priority       text not null default 'normal',
   timeout_ms     int,
   tool_calls     jsonb,          -- 审计摘要（不含完整输出）
+  sender_key     text,           -- 手机 E2EE 公钥（Agent 轮询据此 ECDH 派生）
+  salt           text,           -- 本次任务 HKDF salt
   created_at     timestamptz not null default now(),
   started_at     timestamptz,
   finished_at    timestamptz,

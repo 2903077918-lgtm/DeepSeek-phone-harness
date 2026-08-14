@@ -13,8 +13,7 @@ import { createHistory } from './src/history.js';
 import { createQueue } from './src/queue.js';
 import { createExecutor } from './src/executor.js';
 import { createLanTransport } from './src/transport-lan.js';
-import { createCloudTransport } from './src/transport/cloud.mjs';
-import { createCloudService } from './src/cloud-service.mjs';
+import { createCloudPoller } from './src/cloud-poller.mjs';
 import { ensureE2EEKey, registerDevice, restBaseFromWs } from './src/cloud-register.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -65,18 +64,14 @@ if (mode === 'both' || mode === 'cloud') {
         }
       }
 
-      const transport = createCloudTransport({
-        url: cloudCfg.url,
-        deviceId: agentId,
-        deviceToken: cloudCfg.deviceToken,
-        resumeToken: cloudCfg.resumeToken || null,
-        version: AGENT_VERSION,
-        capabilities: ['headless', 'web', 'confirm', 'e2ee-v1'],
-        pendingTasks: [],
+      // 轮询模式（Vercel 友好，无长连接）：定时拉任务→E2EE 解密→executor→回传
+      const poller = createCloudPoller({
+        config,
+        executor,
+        pollIntervalMs: cloudCfg.pollIntervalMs || 3000,
       });
-      createCloudService({ transport, executor, config, confirmPolicy: cloudCfg.confirmPolicy || 'high' });
-      transport.connect();
-      console.log('[deepseekharness-relay] 云端已连接: ' + cloudCfg.url);
+      poller.start();
+      console.log('[deepseekharness-relay] 云端轮询已启动: ' + restBase + '（每 ' + (cloudCfg.pollIntervalMs || 3000) + 'ms）');
     } catch (e) {
       console.error('[deepseekharness-relay] 云端启动失败: ' + String(e));
     }
