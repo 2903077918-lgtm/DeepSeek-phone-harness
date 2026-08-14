@@ -68,6 +68,10 @@ export async function createTask(
     timeoutMs?: number;
   },
 ): Promise<Task> {
+  // 兼容新调用（senderKey/salt）
+  const full = fields as Record<string, unknown> & typeof fields;
+  const senderKey = typeof full.senderKey === 'string' ? full.senderKey : undefined;
+  const salt = typeof full.salt === 'string' ? full.salt : undefined;
   const deviceUuid = fields.deviceId ? await resolveDeviceUuid(db, fields.deviceId) : null;
   return db.insert<Task>('tasks', {
     user_id: fields.userId ?? null,
@@ -77,6 +81,8 @@ export async function createTask(
     risk_level: fields.riskLevel ?? 'low',
     require_confirm: fields.requireConfirm ?? false,
     timeout_ms: fields.timeoutMs ?? 600000,
+    sender_key: senderKey ?? null,   // 手机 E2EE 公钥（Agent 据此派生）
+    salt: salt ?? null,              // 本次任务 HKDF salt
     created_at: new Date().toISOString(),
   });
 }
@@ -95,7 +101,7 @@ export async function finishTask(
   taskId: string,
   fields: {
     status: TaskStatus;
-    resultCipher: { ciphertext: string; nonce: string; tag: string };
+    resultCipher: { ciphertext: string; iv: string; tag: string }; // 对齐 e2ee-web 的 AES-GCM box
     elapsedMs: number;
     exitCode: number;
   },

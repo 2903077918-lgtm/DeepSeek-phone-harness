@@ -15,7 +15,7 @@
 import { RelayDO } from './relay.js';
 import { createSupabase } from './supabase.js';
 import {
-  upsertDevice, setDeviceStatus, createTask, updateTaskStatus, appendTaskEvent, appendAudit,
+  upsertDevice, setDeviceStatus, createTask, updateTaskStatus, finishTask, appendTaskEvent, appendAudit,
   createUser, loginUser, generatePairCode, createPairCode, pairDeviceWithCode,
   listTasks, getTaskById, listTaskEvents, getDeviceByAgentId,
 } from './store.js';
@@ -46,22 +46,45 @@ export default {
       return res;
     }
 
-    const db = method === 'GET' && pathname.startsWith('/v1/agent/ws') ? null
-      : createDb(env); // 懒建（WS 升级不需要 DB）
+    const db = createDb(env); // 纯 REST，所有端点都要 DB（Agent 走轮询）
 
-    // Agent WS 升级：不适用 CORS
-    if (method === 'GET' && pathname === '/v1/agent/ws') {
-      const agentId = url.searchParams.get('deviceId') || '';
-      if (!agentId) return json({ error: 'missing deviceId' }, 400, origin);
-      const stub = env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + agentId));
-      return stub.fetch(request);
-    }
     if (method === 'GET' && pathname === '/v1/status') {
       return json({ ok: true, service: 'cloud-relay', ts: new Date().toISOString() }, 200, origin);
     }
 
     // 以下需要 DB；未配置 Supabase 则提示
     if (!db) return json({ error: 'Supabase 未配置', hint: 'wrangler secret put SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY' }, 500, origin);
+
+    // ---- Agent 轮询协议（Vercel/无长连接友好）：GET /v1/poll 拉变更，POST result 回传 ----
+    if (method === 'GET' && pathname === '/v1/poll') {
+      const agentId = (url.searchParams.get('deviceId') || '').trim();
+      if (!agentId) return json({ error: 'missing deviceId' }, 400, origin);
+      const dev = await getDeviceByAgentId(db, agentId);
+      if (!dev) return json({ ok: false, error: '设备未注册' }, 404, origin);
+      // 非终态任务（Agent 据此推进状态机）
+      const tasks = await listTasks(db, { deviceId: agentId, status: 'queued' });
+      const active = await listTasks(db, { deviceId: agentId, status: 'running' });
+      const confirming = await listTasks(db, { deviceId: agentId, status: 'confirming' });
+      const cancelled = await listTasks(db, { deviceId: agentId, status: 'cancelled' });
+      const pending = tasks.concat(active).concat(confirming); // queued/running/confirming → Agent 需处理/跟进
+      return json({ ok: true, device: { status: dev.status, killed: dev.status === 'killed' }, tasks: pending, cancelled: cancelled.map(c=>({id:c.id})) }, 200, origin);
+    }
+    // Agent 回传任务结果（status 终态 + 结果密文）
+    if (method === 'POST' && pathname.startsWith('/v1/agent/tasks/') && pathname.endsWith('/result')) {
+      const taskId = decodeURIComponent(pathname.slice('/v1/agent/tasks/'.length, -'/result'.length));
+      const body = await readJson(request);
+      const t = await getTaskById(db, taskId);
+      if (!t) return json({ error: '任务不存在' }, 404, origin);
+      const status: 'succeeded'|'failed'|'timeout' = ['succeeded','failed','timeout'].includes(body.status) ? body.status : 'succeeded';
+      const upd = await finishTask(db, taskId, {
+        status,
+        resultCipher: body.result_cipher || { ciphertext:'', iv:'', tag:'' },
+        elapsedMs: Number(body.elapsedMs) || 0,
+        exitCode: Number(body.exitCode) || 0,
+      });
+      await appendTaskEvent(db, taskId, 'task.'+status, {});
+      return json({ ok: true, taskId }, 200, origin);
+    }
 
     // ---- 账号 ----
     if (method === 'POST' && pathname === '/v1/auth/register') {
@@ -125,8 +148,6 @@ export default {
       const dev = await getDeviceByAgentId(db, agentId);
       if (!dev) return json({ error: '设备不存在' }, 404);
       await setDeviceStatus(db, dev.id, 'killed');
-      // 通知该设备 DO（若在线，RelayDO 拒绝新任务）
-      await env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + agentId)).fetch(new Request('http://x/internal/kill', { method: 'POST' }));
       await appendAudit(db, { deviceId: agentId, action: 'device.kill' });
       return json({ ok: true, agentId, action: 'kill' });
     }
@@ -141,15 +162,10 @@ export default {
       if (dev.status === 'killed') return json({ error: '设备已 kill，拒绝新任务' }, 403);
       const task = await createTask(db, {
         userId: String(userId || dev.user_id), deviceId: String(deviceId),
-        promptCipher, riskLevel, requireConfirm, timeoutMs, 
-      });
+        promptCipher, riskLevel, requireConfirm, timeoutMs,
+        senderKey: body.senderKey, salt: body.salt,   // 供 Agent 轮询时 E2EE 派生
+      } as Record<string, unknown> as Parameters<typeof createTask>[1]);
       await appendTaskEvent(db, task.id, 'task.created', {});
-      // 通知 RelayDO 下发到 Agent
-      await env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + deviceId))
-        .fetch(new Request('http://x/internal/submit', {
-          method: 'POST',
-          body: JSON.stringify({ taskId: task.id, promptCipher, requireConfirm, riskLevel, timeoutMs }),
-        }));
       return json({ ok: true, taskId: task.id }, 201);
     }
     if (method === 'GET' && pathname === '/v1/tasks') {
@@ -179,12 +195,6 @@ export default {
       if (!t) return json({ error: '任务不存在' }, 404);
       await updateTaskStatus(db, taskId, decision === 'allow' ? 'running' : 'cancelled');
       await appendTaskEvent(db, taskId, decision === 'allow' ? 'task.confirmed' : 'task.denied', { userId });
-      // 通知 Agent 确认结果
-      if (t.device_id) {
-        await env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + t.device_id)).fetch(new Request('http://x/internal/confirm', {
-          method: 'POST', body: JSON.stringify({ taskId, decision }),
-        }));
-      }
       return json({ ok: true, taskId, decision });
     }
     if (method === 'POST' && pathname.startsWith('/v1/tasks/') && pathname.endsWith('/cancel')) {
@@ -193,11 +203,6 @@ export default {
       if (!t) return json({ error: '任务不存在' }, 404);
       await updateTaskStatus(db, taskId, 'cancelled');
       await appendTaskEvent(db, taskId, 'task.cancelled', {});
-      if (t.device_id) {
-        await env.RELAY_DO.get(env.RELAY_DO.idFromName('agent:' + t.device_id)).fetch(new Request('http://x/internal/cancel', {
-          method: 'POST', body: JSON.stringify({ taskId }),
-        }));
-      }
       return json({ ok: true, taskId });
     }
 
