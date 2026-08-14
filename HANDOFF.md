@@ -18,12 +18,16 @@
   - Agent 云端传输层 `src/transport/cloud.mjs`：WSS 出站客户端，单测 12/12
   - Agent 接线 `src/cloud-service.mjs`：task.submit→E2EE→guard→executor→回传，`--mode=lan|both|cloud`，单测 10/10
   - 云端 `cloud-relay/`：Cloudflare Worker + RelayDO + **完整 REST 控制面**（账号/设备配对/任务 CRUD/confirm/kill）+ WebCrypto 存储层 + Supabase schema；tsc 通过 + 密码/配对逻辑 6/6 + 协议一致 4/4
-- **下一步候选**（部署认证 L3）：
-  1. 建独立 Supabase → SQL Editor 执行 `cloud-relay/supabase/schema.sql` → 拿 URL + service_role key
-  2. `cloud-relay`: `npx wrangler login` → `secret put` → `deploy` → 告知域名
-  3. `config.json` 填 `cloud:{url,deviceId,deviceToken,e2ee,confirmPolicy}` → `node agent.mjs --mode=cloud`
-  4. 手机端 web 页接云端（当前 web/index.html 仍连 LAN 8788）
-- **环境备注**：DSH web（127.0.0.1:3080）队列繁忙时（多个会话 running）exec 会排队超时——非 relay 故障，等队列清空即可
+- **最近完成**：云端已**真正建库并本地端到端验证通过**（git 5f35653 起）
+  - Supabase 独立库已建、schema 已跑通；本地 `wrangler dev` 连你本机 .dev.vars 里的 Supabase
+  - **全链路验证通过**：注册→登录(200/401)、设备注册(返回配对码)、配对(bound=true)、任务创建/查询(device_id 存 UUID)
+  - 修复：登录两bug(salt编码/PostgREST双重编码)、外键 UUID 解析(pair_codes/audit_log/tasks)、wrangler assets、readJson 健壮化
+- **下一步候选**（云端上线走 L3，需你执行认证/域名）：
+  1. `npx wrangler deploy` 云端上线（拿域名）→ 告知我
+  2. Agent `config.json` 填 cloud 节 → `node agent.mjs --mode=cloud` 连云端
+  3. 手机端 web 页接云端（当前 web/index.html 仍连 LAN 8788）
+  - 安全提醒：之前用于联调的 service_role key 已留存在对话记录，**建议在 Supabase 重新生成一次**
+- **环境备注**：DSH web（127.0.0.1:3080）队列繁忙时（多个会话 running）exec 会排队超时——非 relay 故障；本机 8787 被 codex-relay 占用，cloud-relay 本地用 8790
 
 ---
 
