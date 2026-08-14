@@ -48,7 +48,8 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
     const url = new URL(req.url, `http://${req.headers.host}`);
     try {
       if (req.method === 'GET' && url.pathname === '/') {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        // no-store：防止手机浏览器缓存旧版 UI（v2 升级后旧缓存导致"无法加载"）
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate' });
         const webFile = path.join(rootDir, 'web', 'index.html');
         if (existsSync(webFile)) {
           res.end(readFileSync(webFile, 'utf8'));
