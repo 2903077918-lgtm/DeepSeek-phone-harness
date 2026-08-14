@@ -1,0 +1,1810 @@
+
+(function () {
+  'use strict';
+
+  /* ================= 常量与工具 ================= */
+  var $ = function (id) { return document.getElementById(id); };
+  var LS_TOKEN = 'ph_token';
+  var LS_SESSIONS = 'ph_sessions';
+  var LS_PREFIX = 'ph_msgs_';
+  var LS_DSH_PREFIX = 'ph_dsh_';
+  var STATUS_INTERVAL = 8000;   // /api/status 心跳
+  var HISTORY_LIMIT = 30;
+  var SYNC_STALE_MS = 30000;    // 工作区/会话同步缓存时长
+  var EVENT_INTERVAL = 1000;    // 流式事件轮询间隔
+
+  var state = {
+    token: localStorage.getItem(LS_TOKEN) || '',
+    sessions: [],        // 本地会话 [{id, title, createdAt, lastUsedAt, serverSessionId?}]
+    currentId: null,
+    view: { kind: 'local', id: null }, // {kind:'local',id} | {kind:'dsh',sessionId,projectTitle,sessionTitle}
+    running: false,
+    runSid: null,
+    runStart: 0,
+    runTimer: null,
+    serverSessions: false,
+    status: null,
+    globalHistory: [],
+    pendingApprovals: [],
+    _approvalBusy: false,
+    // DSH 同步
+    workspaces: [],        // [{workspaceId, path, title, sessionCount}]
+    wsOk: false,
+    wsError: '',
+    wsLoadedAt: 0,
+    dshSessions: [],       // [{sessionId, cwd, title?, updatedAt}]
+    dshOk: false,
+    dshLoadedAt: 0,
+    currentProject: null,  // 层级2 当前项目
+    dshHistory: null,      // 当前 DSH 会话历史（null=加载中）
+    dshHistError: '',
+    stream: null,          // 流式状态
+    streamAvail: undefined,
+    streamBaseSeq: 0,
+    _polling: false,
+    projQuery: '',
+    sessQuery: '',
+    // Agent 活动
+    agents: null,          // 最近一次 /api/agents 结果 {parentAvailable, items}:[]（null=加载中）
+    agentsError: '',
+    agentsSid: '',         // 显示中所用的 sessionId
+    agentsLoadedAt: 0
+  };
+
+  var ICON_GEAR = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+  var ICON_CHEV = '<svg class="tc-chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+  var ICON_TRASH = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+  var ICON_EYE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var ICON_EYE_OFF = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+  var ICON_SHIELD = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+  // 新增：文件夹 & 消息气泡 SVG 线条图标（替换 emoji）
+  var ICON_FOLDER = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+  var ICON_BUBBLE = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  function uid() { return 's-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+  function hasText(s) { return typeof s === 'string' && s.trim().length > 0; }
+  function escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function enc(s) { return encodeURIComponent(String(s == null ? '' : s)); }
+  function firstLine(s, n) {
+    var t = String(s || '').split('\n')[0].trim();
+    if (!t) return '（空任务）';
+    return t.length > n ? t.slice(0, n) + '…' : t;
+  }
+  function baseName(p) {
+    var s = String(p || '').replace(/[\\/]+$/, '');
+    var i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+    return i >= 0 ? s.slice(i + 1) : (s || '未命名');
+  }
+  function fmtElapsed(ms) {
+    if (typeof ms !== 'number' || isNaN(ms)) return '—';
+    var s = ms / 1000;
+    if (s < 60) return s.toFixed(1) + ' 秒';
+    var m = Math.floor(s / 60);
+    var sec = Math.round(s % 60);
+    return m + ' 分 ' + sec + ' 秒';
+  }
+  function fmtTime(iso, withSec) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var opt = { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
+    if (withSec) opt.second = '2-digit';
+    try { return d.toLocaleString('zh-CN', opt); } catch (e) { return ''; }
+  }
+  function fmtAgo(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var s = (Date.now() - d.getTime()) / 1000;
+    if (s < 60) return '刚刚';
+    if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
+    if (s < 86400) return Math.floor(s / 3600) + ' 小时前';
+    if (s < 86400 * 7) return Math.floor(s / 86400) + ' 天前';
+    return fmtTime(iso);
+  }
+  function httpErr(msg, code) { var e = new Error(msg); e.code = code; return e; }
+
+  /* ================= API ================= */
+  async function api(path, opts) {
+    opts = opts || {};
+    var headers = { authorization: 'Bearer ' + state.token };
+    if (opts.body) headers['content-type'] = 'application/json';
+    if (opts.headers) Object.assign(headers, opts.headers);
+    var ctrl = null, timer = null;
+    if (opts.timeoutMs) {
+      ctrl = new AbortController();
+      timer = setTimeout(function () { ctrl.abort(); }, opts.timeoutMs);
+    }
+    var r;
+    try {
+      r = await fetch(path, {
+        method: opts.method || 'GET',
+        body: opts.body,
+        headers: headers,
+        signal: ctrl ? ctrl.signal : undefined
+      });
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw httpErr('请求超时，请检查网络与 Agent 状态', 'NET');
+      throw httpErr('无法连接 Agent，请确认电脑端已启动且与手机在同一网络', 'NET');
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    var data = null;
+    try { data = await r.json(); } catch (e) { /* 非 JSON 响应 */ }
+    if (r.status === 401) throw httpErr('令牌无效，请检查 Token', 401);
+    if (!r.ok) throw httpErr((data && data.error) || '请求失败（HTTP ' + r.status + '）', r.status);
+    return data;
+  }
+
+  /* ================= 本地会话存储 ================= */
+  function loadSessions() { try { return JSON.parse(localStorage.getItem(LS_SESSIONS) || '[]'); } catch (e) { return []; } }
+  function saveSessions() { localStorage.setItem(LS_SESSIONS, JSON.stringify(state.sessions)); }
+  function loadMsgs(sid) { try { return JSON.parse(localStorage.getItem(LS_PREFIX + sid) || '[]'); } catch (e) { return []; } }
+  function saveMsgs(sid, msgs) { localStorage.setItem(LS_PREFIX + sid, JSON.stringify(msgs)); }
+  function loadDshMsgs(sid) { try { return JSON.parse(localStorage.getItem(LS_DSH_PREFIX + sid) || '[]'); } catch (e) { return []; } }
+  function saveDshMsgs(sid, msgs) { localStorage.setItem(LS_DSH_PREFIX + sid, JSON.stringify(msgs)); }
+  function newSessionObj() {
+    return { id: uid(), title: '新会话', createdAt: new Date().toISOString(), lastUsedAt: new Date().toISOString() };
+  }
+  function ensureSession() {
+    if (state.currentId && state.sessions.some(function (s) { return s.id === state.currentId; })) return state.currentId;
+    if (!state.sessions.length) { state.sessions.push(newSessionObj()); saveSessions(); }
+    state.currentId = state.sessions[0].id;
+    return state.currentId;
+  }
+  function touchSession(id) {
+    var s = state.sessions.find(function (x) { return x.id === id; });
+    if (s) { s.lastUsedAt = new Date().toISOString(); saveSessions(); }
+  }
+  function newSession() {
+    var s = newSessionObj();
+    state.sessions.unshift(s);
+    saveSessions();
+    switchSession(s.id);
+    return s.id;
+  }
+  function switchSession(id) {
+    if (!state.sessions.some(function (s) { return s.id === id; })) return;
+    state.currentId = id;
+    state.view = { kind: 'local', id: id };
+    touchSession(id);
+    renderMessages('bottom');
+    updateCrumb();
+  }
+  function deleteSession(id) {
+    localStorage.removeItem(LS_PREFIX + id);
+    state.sessions = state.sessions.filter(function (s) { return s.id !== id; });
+    if (!state.sessions.length) state.sessions.push(newSessionObj());
+    saveSessions();
+    if (!state.sessions.some(function (s) { return s.id === state.currentId; })) {
+      state.currentId = state.sessions[0].id;
+      state.view = { kind: 'local', id: state.currentId };
+    }
+    renderMessages('bottom');
+    updateCrumb();
+  }
+
+  /* ================= iOS 导航栈 ================= */
+  var NAV_PAGES = null;
+  var navTop = 0;
+
+  function applyNav() {
+    for (var i = 0; i < NAV_PAGES.length; i++) {
+      var p = NAV_PAGES[i];
+      p.classList.toggle('active', i === navTop);
+      p.classList.toggle('behind', i < navTop);
+      p.setAttribute('aria-hidden', i === navTop ? 'false' : 'true');
+    }
+  }
+  function navPush(idx) {
+    if (idx <= navTop || idx >= NAV_PAGES.length) return;
+    navTop = idx;
+    applyNav();
+    if (idx === 1) onProjectsOpened();
+    if (idx === 2) renderSessionsPage();
+  }
+  function navPop() {
+    if (navTop <= 0) return;
+    navTop--;
+    applyNav();
+  }
+  function navPopTo(idx) {
+    if (idx >= navTop) return;
+    navTop = idx;
+    applyNav();
+  }
+
+  // iOS 风格右滑返回手势（左侧边缘触发，带视差）
+  function attachSwipe(pageEl) {
+    var startX = 0, startY = 0, dx = 0, active = false, dragging = false;
+    pageEl.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) return;
+      if (!pageEl.classList.contains('active')) return;
+      var t = e.touches[0];
+      startX = t.clientX; startY = t.clientY; dx = 0; active = true; dragging = false;
+    }, { passive: true });
+    pageEl.addEventListener('touchmove', function (e) {
+      if (!active) return;
+      var t = e.touches[0];
+      dx = t.clientX - startX;
+      var dy = Math.abs(t.clientY - startY);
+      if (!dragging && dx > 10 && dy < dx * 1.8) {
+        dragging = true;
+        pageEl.classList.add('dragging');
+        applyDrag(0);
+      }
+      if (!dragging) return;
+      e.preventDefault();
+      applyDrag(dx);
+    }, { passive: false });
+    pageEl.addEventListener('touchend', function () {
+      if (!dragging) { active = false; return; }
+      var w = window.innerWidth;
+      var shouldPop = dx > w * 0.28;
+      pageEl.classList.remove('dragging');
+      resetDrag();
+      if (shouldPop) navPop();
+      active = false; dragging = false;
+    });
+    function prevPage() {
+      var idx = NAV_PAGES.indexOf(pageEl);
+      return idx > 0 ? NAV_PAGES[idx - 1] : null;
+    }
+    function applyDrag(x) {
+      x = Math.max(0, Math.min(x, window.innerWidth));
+      pageEl.style.transform = 'translateX(' + x + 'px)';
+      var prev = prevPage();
+      if (prev) prev.style.transform = 'translateX(calc(-27% + ' + (x * 0.38) + 'px)) scale(0.965)';
+    }
+    function resetDrag() {
+      pageEl.style.transform = '';
+      var prev = prevPage();
+      if (prev) prev.style.transform = '';
+    }
+  }
+
+  /* ================= DSH 工作区 / 会话同步 ================= */
+  async function loadWorkspaces(force) {
+    if (!state.token) return;
+    if (!force && state.wsOk && Date.now() - state.wsLoadedAt < SYNC_STALE_MS) return;
+    try {
+      var r = await api('/api/dsh-workspaces', { timeoutMs: 6000 });
+      state.workspaces = (r && r.items) || [];
+      state.wsOk = true;
+      state.wsError = '';
+      state.wsLoadedAt = Date.now();
+    } catch (e) {
+      state.workspaces = [];
+      state.wsOk = false;
+      state.wsError = e.code === 404 ? '后端未实现 /api/dsh-workspaces' : (e.message || '同步失败');
+    }
+    renderProjects();
+  }
+
+  async function loadDshSessions(force) {
+    if (!state.token) return;
+    if (!force && state.dshOk && Date.now() - state.dshLoadedAt < SYNC_STALE_MS) return;
+    try {
+      var r = await api('/api/dsh-sessions', { timeoutMs: 8000 });
+      state.dshSessions = (r && r.items) || [];
+      state.dshOk = true;
+      state.dshLoadedAt = Date.now();
+    } catch (e) {
+      state.dshSessions = [];
+      state.dshOk = false;
+    }
+    renderProjects();
+  }
+
+  // cwd 是否位于工作区路径下（Windows/Unix 分隔符归一化）
+  function cwdUnder(cwd, wsPath) {
+    if (!cwd || !wsPath) return false;
+    var c = String(cwd).replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '');
+    var p = String(wsPath).replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '');
+    if (!p) return false;
+    return c === p || c.indexOf(p + '/') === 0;
+  }
+
+  // 「📂 未分组」伪项目桶：收纳 ungrouped=true 的电脑会话（层级1 展示、层级2 复用会话列表页）
+  var UNGROUPED_WS = { workspaceId: '__ungrouped__', path: '', title: '未分组', ungrouped: true };
+
+  function projectSessions(ws) {
+    if (!ws) return [];
+    var list;
+    if (ws.ungrouped) {
+      list = state.dshSessions.filter(function (s) { return s.ungrouped === true; });
+    } else {
+      list = state.dshSessions.filter(function (s) { return cwdUnder(s.cwd, ws.path); });
+    }
+    list.sort(function (a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
+    return list;
+  }
+
+  // 按需拉取消息数（messageCount）：只给打开的项目会话列表用，避免全量开销。
+  // withCount=true 会为每个会话读一次历史计数，因此仅进入层级2 时触发一次并合并回 state.dshSessions。
+  async function loadDshSessionCounts() {
+    if (!state.token) return;
+    try {
+      var r = await api('/api/dsh-sessions?withCount=true', { timeoutMs: 12000 });
+      var items = (r && r.items) || [];
+      var byId = {};
+      items.forEach(function (s) { byId[s.sessionId] = s; });
+      state.dshSessions.forEach(function (s) {
+        var match = byId[s.sessionId];
+        if (match && typeof match.messageCount === 'number') s.messageCount = match.messageCount;
+        else s.messageCount = undefined;
+      });
+      renderSessionsPage();
+      renderProjects();
+    } catch (e) {
+      // 计数加载失败不阻塞：列表仍可用，只是不显示消息数
+    }
+  }
+
+  function onProjectsOpened() {
+    renderProjects();
+    renderSettingsStatus();
+    if (state.token) {
+      refreshGlobalHistory(true);
+      loadWorkspaces(false);
+      loadDshSessions(false);
+    }
+  }
+
+  function renderProjects() {
+    var q = state.projQuery;
+    var wsBox = $('wsList');
+    var localBox = $('localList');
+    wsBox.textContent = '';
+    localBox.textContent = '';
+
+    // 同步状态提示
+    var syncNote = $('wsSyncNote');
+    if (!syncNote) {
+      syncNote = el('div', 'proj-note');
+      syncNote.id = 'wsSyncNote';
+      wsBox.parentNode.insertBefore(syncNote, wsBox);
+    }
+    if (!state.token) {
+      syncNote.className = 'proj-note info';
+      syncNote.textContent = '未设置 Token：DSH 工作区与电脑会话暂不可见。';
+      syncNote.hidden = false;
+    } else if (!state.wsOk && !state.dshOk) {
+      syncNote.className = 'proj-note';
+      syncNote.textContent = 'DSH 同步不可用（' + (state.wsError || '未知错误') + '）。仅显示「我的对话」，仍可正常发送任务。';
+      syncNote.hidden = false;
+    } else {
+      syncNote.hidden = true;
+    }
+
+    // DSH 工作区
+    var wss = state.workspaces.filter(function (w) {
+      if (!q) return true;
+      return (String(w.title || '').toLowerCase().indexOf(q) > -1) ||
+             (String(w.path || '').toLowerCase().indexOf(q) > -1);
+    });
+    $('wsCount').textContent = state.wsOk ? (wss.length + ' / ' + state.workspaces.length) : '—';
+    $('wsEmpty').hidden = !(state.wsOk && !wss.length);
+    wss.forEach(function (w) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'ws-item';
+      var count = state.dshOk ? projectSessions(w).length : (typeof w.sessionCount === 'number' ? w.sessionCount : 0);
+      item.innerHTML =
+        '<span class="ws-icon">' + ICON_FOLDER + '</span>' +
+        '<span class="ws-main"><span class="ws-title">' + escHtml(w.title || baseName(w.path)) + '</span></span>' +
+        '<span class="badge">' + count + '</span>';
+      // 徽章弹跳
+      if (!state._wsCounts) state._wsCounts = {};
+      if (state._wsCounts[w.workspaceId] !== count) {
+        var b = item.querySelector('.badge');
+        b.classList.add('pop');
+        setTimeout(function () { b.classList.remove('pop'); }, 500);
+      }
+      state._wsCounts[w.workspaceId] = count;
+      item.addEventListener('click', function () { openProject(w); });
+      wsBox.appendChild(item);
+    });
+
+    // 未分组项目桶（存在 ungrouped 电脑会话时显示，点击复用会话列表页）
+    var ungroupedSec = $('ungroupedSec');
+    var ungroupedList = $('ungroupedList');
+    if (ungroupedSec) {
+      var hasUngrouped = state.dshOk && projectSessions(UNGROUPED_WS).length > 0;
+      ungroupedSec.hidden = !hasUngrouped;
+    }
+    if (ungroupedList) {
+      ungroupedList.textContent = '';
+      if (state.dshOk && ungroupedSec && !ungroupedSec.hidden) {
+        var upCount = projectSessions(UNGROUPED_WS).length;
+        $('ungroupedCount').textContent = upCount ? upCount + ' 个会话' : '';
+        var uitem = document.createElement('button');
+        uitem.type = 'button';
+        uitem.className = 'ws-item';
+        uitem.innerHTML =
+          '<span class="ws-icon">' + ICON_FOLDER + '</span>' +
+          '<span class="ws-main"><span class="ws-title">未分组</span></span>' +
+          '<span class="badge">' + upCount + '</span>';
+        uitem.addEventListener('click', function () { openProject(UNGROUPED_WS); });
+        ungroupedList.appendChild(uitem);
+      }
+    }
+
+    // 我的对话（本地会话）
+    var locals = state.sessions.filter(function (s) {
+      if (!q) return true;
+      return String(s.title || '').toLowerCase().indexOf(q) > -1;
+    });
+    $('localCount').textContent = locals.length ? '共 ' + locals.length : '';
+    locals.forEach(function (s) {
+      var item = el('div', 'sess-item' + (s.id === state.currentId ? ' active' : ''));
+      var icon = el('span', 'sess-icon', ICON_BUBBLE);
+      var main = el('div', 'sess-main');
+      main.appendChild(el('div', 'sess-title', s.title || '新会话'));
+      var cnt = loadMsgs(s.id).length;
+      main.appendChild(el('div', 'sess-meta', (cnt ? cnt + ' 条消息 · ' : '') + fmtAgo(s.lastUsedAt || s.createdAt)));
+      main.addEventListener('click', function () { switchSession(s.id); navPopTo(0); });
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'sess-del';
+      del.setAttribute('aria-label', '删除会话');
+      del.innerHTML = ICON_TRASH;
+      del.addEventListener('click', function () { confirmDelete(del, s.id); });
+      item.appendChild(icon);
+      item.appendChild(main);
+      item.appendChild(del);
+      localBox.appendChild(item);
+    });
+  }
+
+  function confirmDelete(btn, id) {
+    if (btn.classList.contains('confirm')) {
+      btn.classList.remove('confirm');
+      btn.innerHTML = ICON_TRASH;
+      clearTimeout(btn._t);
+      deleteSession(id);
+      toast('会话已删除');
+      renderProjects();
+      return;
+    }
+    btn.classList.add('confirm');
+    btn.textContent = '确认';
+    clearTimeout(btn._t);
+    btn._t = setTimeout(function () {
+      btn.classList.remove('confirm');
+      btn.innerHTML = ICON_TRASH;
+    }, 2500);
+  }
+
+  function openProject(ws) {
+    state.currentProject = ws;
+    if (!state.dshOk) loadDshSessions(true);
+    renderSessionsPage();
+    navPush(2);
+    // 进入会话列表后按需补齐 messageCount（用 withCount=true 加载，避免常驻全量开销）
+    loadDshSessionCounts();
+  }
+
+  /* ================= 层级 2：会话列表 ================= */
+  function renderSessionsPage() {
+    var ws = state.currentProject;
+    if (!ws) return;
+    $('sessPageTitle').textContent = ws.title || baseName(ws.path) || '会话';
+    var q = state.sessQuery;
+    var list = projectSessions(ws).filter(function (s) {
+      if (!q) return true;
+      return (String(s.title || '').toLowerCase().indexOf(q) > -1) ||
+             (String(s.cwd || '').toLowerCase().indexOf(q) > -1);
+    });
+    var box = $('dshSessList');
+    box.textContent = '';
+    $('dshSessEmpty').hidden = list.length > 0;
+
+    if (!state.dshOk) {
+      box.appendChild(el('div', 'proj-note', '无法加载电脑端 DSH 会话（/api/dsh-sessions 不可用）。'));
+      return;
+    }
+    list.forEach(function (s) {
+      var item = el('div', 'sess-item');
+      var icon = el('span', 'sess-icon', ICON_BUBBLE);
+      var main = el('div', 'sess-main');
+      var title = s.title || baseName(s.cwd) || '未命名会话';
+      main.appendChild(el('div', 'sess-title', title));
+      var meta = String(s.cwd || '');
+      if (typeof s.messageCount === 'number' && s.messageCount >= 0) meta += (meta ? ' · ' : '') + s.messageCount + ' 条消息';
+      if (s.updatedAt) meta += (meta ? ' · ' : '') + fmtAgo(s.updatedAt);
+      main.appendChild(el('div', 'sess-meta', meta));
+      main.addEventListener('click', function () { openDshSession(ws, s); });
+      item.appendChild(icon);
+      item.appendChild(main);
+      box.appendChild(item);
+    });
+  }
+
+  async function openDshSession(ws, sess) {
+    state.view = {
+      kind: 'dsh',
+      sessionId: sess.sessionId,
+      projectTitle: (ws && ws.title) || baseName((ws && ws.path) || ''),
+      sessionTitle: sess.title || baseName(sess.cwd) || '会话'
+    };
+    state.dshHistory = null;      // 加载中
+    state.dshHistError = '';
+    updateCrumb();
+    renderMessages('bottom');     // 立即显示加载中状态
+    navPopTo(0);
+    try {
+      var r = await api('/api/dsh-history?sessionId=' + enc(sess.sessionId), { timeoutMs: 8000 });
+      state.dshHistory = (r && r.items) || [];
+    } catch (e) {
+      state.dshHistory = [];
+      state.dshHistError = e.code === 404 ? '后端未实现 /api/dsh-history' : (e.message || '历史加载失败');
+      if (e.code === 401) openTokenOverlay('令牌无效，请重新输入');
+    }
+    renderMessages('bottom');
+  }
+
+  /* ================= 层级 3：Agent 活动（子代理列表） ================= */
+  // 决定要查询的父会话：优先当前打开的电脑会话，否则取最近的 DSH 会话
+  function resolveAgentSession() {
+    if (state.view && state.view.kind === 'dsh' && state.view.sessionId) return { sessionId: state.view.sessionId, title: state.view.sessionTitle };
+    var list = (state.dshSessions || []).slice().sort(function (a, b) {
+      return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+    });
+    var s = list[0];
+    if (s) return { sessionId: s.sessionId, title: s.title || baseName(s.cwd) || '最近会话' };
+    return null;
+  }
+
+  async function loadAgents(force) {
+    if (!state.token) { renderAgents(); return; }
+    // 未强制刷新时 15s 内复用缓存
+    if (!force && state.agents && Date.now() - state.agentsLoadedAt < 15000) { renderAgents(); return; }
+    var rctx = resolveAgentSession();
+    if (!rctx) { state.agents = null; state.agentsError = ''; state.agentsSid = ''; renderAgents(); return; }
+    state.agents = null; // 加载中
+    state.agentsSid = rctx.sessionId;
+    state.agentsError = '';
+    renderAgents();
+    try {
+      var r = await api('/api/agents?sessionId=' + enc(rctx.sessionId), { timeoutMs: 8000 });
+      state.agents = {
+        parentAvailable: !!(r && r.parentAvailable),
+        items: (r && r.items) || []
+      };
+      state.agentsError = '';
+      state.agentsLoadedAt = Date.now();
+    } catch (e) {
+      state.agents = null;
+      state.agentsError = e.code === 404 ? '后端未实现 /api/agents' : (e.code === 401 ? '令牌无效，请检查 Token' : (e.message || 'Agent 活动不可用'));
+      if (e.code === 401) openTokenOverlay('令牌无效，请重新输入');
+    }
+    renderAgents();
+  }
+
+  function agentStatusLabel(a) {
+    if (!a || !a.activity) return '';
+    var act = String(a.activity).toLowerCase();
+    if (act === 'running' || act === 'active' || act === 'working') return { cls: 'running', text: '运行中' };
+    if (act === 'inactive' || act === 'done' || act === 'idle' || act === 'complete' || act === 'completed') {
+      return { cls: 'idle', text: act === 'inactive' ? '空闲' : '完成' };
+    }
+    return { cls: 'other', text: String(a.activity) };
+  }
+
+  function renderAgents() {
+    var listBox = $('agtList');
+    var emptyBox = $('agtEmpty');
+    var ctx = $('agtCtx');
+    var rctx = resolveAgentSession();
+
+    // 上下文标题
+    if (ctx) {
+      ctx.textContent = '';
+      if (rctx) ctx.appendChild(el('span', '', '会话：' + (state.agentsSid ? state.agentsSid.slice(0, 8) : '…')));
+      else ctx.textContent = '请先打开一个电脑端会话';
+    }
+
+    listBox.textContent = '';
+    if (!state.token) {
+      emptyBox.hidden = false;
+      emptyBox.textContent = '未设置 Token，无法查看 Agent 活动。';
+      return;
+    }
+    if (state.agentsError) {
+      emptyBox.hidden = false;
+      emptyBox.textContent = 'Agent 活动不可用（' + state.agentsError + '）。';
+      return;
+    }
+    if (!rctx) {
+      emptyBox.hidden = false;
+      emptyBox.textContent = '当前没有电脑端会话，请先在「项目与对话」中打开一个电脑会话。';
+      return;
+    }
+    if (!state.agents) {
+      emptyBox.hidden = true;
+      listBox.appendChild(el('div', 'proj-note info', '正在加载子代理…'));
+      return;
+    }
+    if (!state.agents.parentAvailable) {
+      emptyBox.hidden = false;
+      emptyBox.textContent = '该会话不可作为父会话（parentAvailable=false），暂时无法查看子代理。';
+      return;
+    }
+    var items = state.agents.items || [];
+    emptyBox.hidden = items.length > 0;
+    if (!items.length) { emptyBox.textContent = '当前会话暂无子代理'; return; }
+    items.forEach(function (a) {
+      var item = el('div', 'agt-item');
+      var avatar = el('span', 'agt-avatar', '🤖');
+      var main = el('div', 'agt-main');
+      main.appendChild(el('div', 'agt-title', a.label || '未命名子代理'));
+      var meta = '#' + (a.sessionId ? a.sessionId.slice(0, 8) : '');
+      if (a.kind) meta += ' · ' + a.kind;
+      if (a.mode) meta += ' · ' + a.mode;
+      if (a.hasChildren) meta += ' · 有子代理';
+      main.appendChild(el('div', 'agt-meta', meta));
+      var st = agentStatusLabel(a);
+      var pill = el('span', 'agt-pill ' + (st ? st.cls : 'other'), st ? st.text : (a.activity ? a.activity : '—'));
+      item.appendChild(avatar);
+      item.appendChild(main);
+      item.appendChild(pill);
+      listBox.appendChild(item);
+    });
+  }
+
+  /* ================= Markdown 简单渲染（先转义再解析，安全） ================= */
+  function inlineMd(s) {
+    return s
+      .replace(/`([^`]+)`/g, function (m, c) { return '<code>' + c + '</code>'; })
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^[])\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1<a href="$3" target="_blank" rel="noopener">$2</a>')
+      .replace(/(^|\s)(https?:\/\/[^\s<]+[^\s<.,;:!?)\]])/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  }
+  function renderMarkdown(src) {
+    var esc = escHtml(String(src || ''));
+    var lines = esc.split('\n');
+    var html = '';
+    var codeBuf = [];
+    var inCode = false;
+    var inList = null;
+    var listBuf = [];
+
+    function flushList() {
+      if (!inList) return;
+      html += '<' + inList + '>' + listBuf.join('') + '</' + inList + '>';
+      listBuf = [];
+      inList = null;
+    }
+    function flushCode() {
+      html += '<pre><code>' + codeBuf.join('\n') + '</code></pre>';
+      codeBuf = [];
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var fence = /^(`{3,}|~{3,})/.exec(line);
+      if (fence) {
+        flushList();
+        if (inCode) { flushCode(); inCode = false; }
+        else { inCode = true; codeBuf = []; }
+        continue;
+      }
+      if (inCode) { codeBuf.push(line); continue; }
+      var t = line.trim();
+      if (!t) { flushList(); continue; }
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { flushList(); html += '<hr>'; continue; }
+      var h = /^(#{1,4})\s+(.*)$/.exec(t);
+      if (h) {
+        flushList();
+        var lvl = Math.min(h[1].length + 1, 6);
+        html += '<h' + lvl + '>' + inlineMd(h[2]) + '</h' + lvl + '>';
+        continue;
+      }
+      if (t.indexOf('&gt;') === 0) { flushList(); html += '<blockquote>' + inlineMd(t.replace(/^&gt;\s?/, '')) + '</blockquote>'; continue; }
+      var ul = /^[-*•]\s+(.*)$/.exec(t);
+      var ol = /^\d+[.)]\s+(.*)$/.exec(t);
+      if (ul || ol) {
+        var type = ul ? 'ul' : 'ol';
+        if (inList && inList !== type) flushList();
+        if (!inList) { inList = type; listBuf = []; }
+        listBuf.push('<li>' + inlineMd((ul ? ul[1] : ol[1])) + '</li>');
+        continue;
+      }
+      flushList();
+      html += '<p>' + inlineMd(t) + '</p>';
+    }
+    flushList();
+    if (inCode) flushCode();
+    return html;
+  }
+
+  /* ================= 消息渲染 ================= */
+  function scrollBottom(smooth) {
+    var c = $('chat');
+    c.scrollTo({ top: c.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  }
+  function scrollIfNear() {
+    var c = $('chat');
+    if (c.scrollHeight - c.scrollTop - c.clientHeight < 160) c.scrollTop = c.scrollHeight;
+  }
+  function renderMessages(scroll) {
+    var chat = $('chat');
+    var sid = ensureSession();
+    chat.textContent = '';
+    var isDsh = state.view && state.view.kind === 'dsh';
+    var dsid = isDsh ? state.view.sessionId : null;
+
+    if (isDsh) {
+      if (state.dshHistory === null) {
+        chat.appendChild(el('div', 'chat-notice loading', '<span class="spin-icon">⟳</span> 正在加载 DSH 会话历史…'));
+      } else {
+        if (state.dshHistError) {
+          chat.appendChild(el('div', 'chat-notice err', '历史加载失败：' + state.dshHistError + '（仍可继续对话）'));
+        }
+        var hist = state.dshHistory || [];
+        var extras = loadDshMsgs(dsid);
+        if (!hist.length && !extras.length && !state.running) {
+          chat.appendChild(dshWelcomeEl());
+        } else {
+          hist.forEach(function (it) { chat.appendChild(dshItemEl(it)); });
+          extras.forEach(function (m) { chat.appendChild(m.role === 'user' ? userEl(m) : asstEl(m)); });
+        }
+        if (state.running && state.runSid === 'dsh:' + dsid && !state.stream) {
+          chat.appendChild(pendingEl());
+        }
+      }
+      gotoScroll();
+      return;
+    }
+
+    var msgs = loadMsgs(sid);
+    if (!msgs.length && !(state.running && state.runSid === sid)) {
+      chat.appendChild(welcomeEl());
+      gotoScroll();
+      return;
+    }
+    msgs.forEach(function (m) {
+      if (m.role === 'approval') chat.appendChild(approvalEl(m));
+      else chat.appendChild(m.role === 'user' ? userEl(m) : asstEl(m));
+    });
+    if (state.running && state.runSid === sid) chat.appendChild(pendingEl());
+    gotoScroll();
+
+    function gotoScroll() {
+      if (scroll === 'bottom') scrollBottom(false);
+      else if (scroll === 'smooth') scrollBottom(true);
+      else if (scroll === 'ifNear') scrollIfNear();
+    }
+  }
+
+  function welcomeEl() {
+    var w = el('div', 'welcome');
+    w.appendChild(el('div', 'w-logo', '>_'));
+    w.appendChild(el('div', 'w-title', '你好，我是电脑上的 DSH'));
+    w.appendChild(el('div', 'w-sub', '在手机上发送任务，远程控制电脑端 DeepSeek Harness 执行，结果实时返回。'));
+    var chips = el('div', 'chips');
+    [
+      '检查 C 盘剩余空间，列出占用最大的 5 个文件',
+      '查看当前目录的文件结构',
+      '总结最近的 Git 提交记录'
+    ].forEach(function (t) {
+      chips.appendChild(chipEx(t));
+    });
+    w.appendChild(chips);
+    return w;
+  }
+
+  function dshWelcomeEl() {
+    var w = el('div', 'welcome');
+    w.appendChild(el('div', 'w-logo', '💬'));
+    w.appendChild(el('div', 'w-title', 'DSH 历史会话'));
+    w.appendChild(el('div', 'w-sub', '这是电脑端 DSH 的历史会话（只读展示）。发送消息将「继续对话」，结果实时流式返回。'));
+    var chips = el('div', 'chips');
+    [
+      '总结这个项目当前的进展',
+      '检查最近的构建 / 测试状态',
+      '看看有没有待办或报错'
+    ].forEach(function (t) {
+      chips.appendChild(chipEx(t));
+    });
+    w.appendChild(chips);
+    return w;
+  }
+
+  function chipEx(t) {
+    var b = el('button', 'chip-ex', t);
+    b.type = 'button';
+    b.addEventListener('click', function () {
+      $('input').value = t;
+      autoGrow($('input'));
+      $('input').focus();
+    });
+    return b;
+  }
+
+  // DSH 历史条目（read-only）
+  function dshItemEl(it) {
+    var role = it.role || 'assistant';
+    if (role === 'user') {
+      var wrap = el('div', 'msg user');
+      wrap.appendChild(el('div', 'bubble user', String(it.text == null ? '' : it.text)));
+      wrap.appendChild(el('div', 'meta', fmtTime(it.time || it.at)));
+      return wrap;
+    }
+    if (role === 'tool') {
+      var tw = el('div', 'msg assistant');
+      var tc = el('div', 'dsh-tool', '🛠 ' + String(it.text == null ? '' : it.text));
+      tw.appendChild(tc);
+      tw.appendChild(el('div', 'meta', fmtTime(it.time || it.at)));
+      return tw;
+    }
+    var aw = el('div', 'msg assistant');
+    var b = el('div', 'bubble asst');
+    var head = el('div', 'asst-head');
+    head.appendChild(el('span', 'asst-name', 'deepseekharness-relay'));
+    head.appendChild(el('span', 'chip backend', 'DSH'));
+    b.appendChild(head);
+    var body = el('div', 'asst-body');
+    body.innerHTML = renderMarkdown(it.text);
+    b.appendChild(body);
+    b.appendChild(el('div', 'asst-meta', fmtTime(it.time || it.at)));
+    aw.appendChild(b);
+    return aw;
+  }
+
+  function userEl(m) {
+    var wrap = el('div', 'msg user');
+    var b = el('div', 'bubble user', m.text);
+    wrap.appendChild(b);
+    var meta = el('div', 'meta', fmtTime(m.at));
+    wrap.appendChild(meta);
+    return wrap;
+  }
+
+  function asstEl(m) {
+    var wrap = el('div', 'msg assistant');
+    var b = el('div', 'bubble asst');
+
+    if (m.streaming) {
+      var head = el('div', 'asst-head');
+      head.appendChild(el('span', 'asst-name', 'deepseekharness-relay'));
+      head.appendChild(el('span', 'chip backend', 'DSH · 流式'));
+      b.appendChild(head);
+      var stext = el('div', 'stream-text');
+      var stools = el('div', 'stream-tools');
+      b.appendChild(stext);
+      b.appendChild(stools);
+      b.appendChild(el('span', 'stream-cursor'));
+      if (state.stream && state.stream.msgId === m.id) {
+        state.stream.el = {
+          text: stext,
+          tools: stools,
+          cursor: b.querySelector('.stream-cursor')
+        };
+      }
+      wrap.appendChild(b);
+      return wrap;
+    }
+
+    var okHead = el('div', 'asst-head');
+    okHead.appendChild(el('span', 'asst-name', 'deepseekharness-relay'));
+    if (typeof m.ok === 'boolean') {
+      var okChip = el('span', 'chip ' + (m.ok ? 'ok' : 'fail'));
+      okChip.textContent = m.ok ? '✓ 成功' : ('✗ 失败' + (typeof m.exitCode === 'number' ? ' · ' + m.exitCode : ''));
+      okHead.appendChild(okChip);
+    }
+    if (m.backend) okHead.appendChild(el('span', 'chip backend', m.backend));
+    b.appendChild(okHead);
+
+    if (hasText(m.text)) {
+      var body = el('div', 'asst-body');
+      body.innerHTML = renderMarkdown(m.text);
+      b.appendChild(body);
+    }
+    if (hasText(m.stderr)) {
+      var err = el('div', 'stderr');
+      err.appendChild(el('div', 'stderr-lbl', '错误输出 stderr'));
+      var pre = el('pre');
+      pre.textContent = m.stderr;
+      err.appendChild(pre);
+      b.appendChild(err);
+    }
+    if (!hasText(m.text) && !hasText(m.stderr)) {
+      b.appendChild(el('div', 'noout', m.interrupted ? m.stderr || '执行被中断' : '（任务无输出）'));
+    }
+
+    var meta = el('div', 'asst-meta');
+    if (m.elapsedMs != null) meta.appendChild(el('span', '', fmtElapsed(m.elapsedMs)));
+    if (m.at) meta.appendChild(el('span', '', fmtTime(m.at)));
+    b.appendChild(meta);
+
+    wrap.appendChild(b);
+    if (hasText(m.text) || hasText(m.stderr) || typeof m.exitCode === 'number') {
+      wrap.appendChild(toolCardEl(m));
+    }
+    return wrap;
+  }
+
+  function toolCardEl(m) {
+    var card = el('div', 'tool-card');
+    var head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'tc-head';
+    head.setAttribute('aria-expanded', 'false');
+    head.innerHTML = ICON_GEAR +
+      '<span class="tc-name">' + escHtml('exec · ' + (m.backend || 'relay')) + '</span>' +
+      '<span class="tc-time">' + escHtml(fmtElapsed(m.elapsedMs)) + '</span>' +
+      ICON_CHEV;
+
+    var body = el('div', 'tc-body');
+    var row = el('div', 'tc-row');
+    row.innerHTML =
+      '<span class="tc-k">exit code</span><code class="tc-v ' + (m.ok ? 'ok' : 'err') + '">' +
+      (typeof m.exitCode === 'number' ? m.exitCode : '—') + '</code>' +
+      '<span class="tc-k">backend</span><code class="tc-v">' + escHtml(m.backend || 'relay') + '</code>';
+    body.appendChild(row);
+
+    var pre = el('pre');
+    var parts = [];
+    if (hasText(m.text)) parts.push(m.text);
+    if (hasText(m.stderr)) parts.push('── stderr ──\n' + m.stderr);
+    pre.textContent = parts.join('\n\n') || '（无输出）';
+    body.appendChild(pre);
+
+    head.addEventListener('click', function () {
+      var open = card.classList.toggle('open');
+      head.setAttribute('aria-expanded', String(open));
+    });
+
+    card.appendChild(head);
+    card.appendChild(body);
+    return card;
+  }
+
+  /* ================= 审批（授权请求） ================= */
+  var APPROVAL_INTERVAL = 5000;
+
+  function approvalEl(m) {
+    var wrap = el('div', 'msg assistant');
+    wrap.appendChild(approvalCardEl(m));
+    return wrap;
+  }
+
+  function approvalCardEl(m) {
+    var status = m.status || 'pending';
+    var card = el('div', 'appr-card ' + status);
+
+    var head = el('div', 'appr-head');
+    var icon = el('span', 'appr-icon');
+    icon.innerHTML = ICON_SHIELD;
+    head.appendChild(icon);
+    var title = status === 'pending' || status === 'processing' ? '需要授权'
+      : (status === 'allowed' ? '已允许' : (status === 'rejected' ? '已拒绝' : '已处理'));
+    head.appendChild(el('span', 'appr-title', title));
+    if (status === 'allowed') head.appendChild(el('span', 'appr-chip ok', '✓ 已允许'));
+    else if (status === 'rejected') head.appendChild(el('span', 'appr-chip err', '✗ 已拒绝'));
+    else if (status === 'expired') head.appendChild(el('span', 'appr-chip muted', '已处理'));
+    head.appendChild(el('span', 'appr-time', fmtTime(m.receivedAt || m.at)));
+    card.appendChild(head);
+
+    var body = el('div', 'appr-body');
+    body.appendChild(el('div', 'appr-tool', m.toolName || '未知工具'));
+    if (hasText(m.reason)) body.appendChild(el('div', 'appr-reason', m.reason));
+    if (hasText(m.callId)) body.appendChild(el('div', 'appr-callid', 'callId: ' + m.callId));
+
+    if (status === 'pending' || status === 'processing') {
+      var actions = el('div', 'appr-actions');
+      var busy = status === 'processing';
+      var allowBtn = el('button', 'appr-btn allow', busy ? '处理中…' : '允许一次');
+      allowBtn.type = 'button';
+      allowBtn.disabled = busy;
+      allowBtn.addEventListener('click', function () { decideApproval(m, 'allowed-once'); });
+      var rejectBtn = el('button', 'appr-btn reject', busy ? '处理中…' : '拒绝');
+      rejectBtn.type = 'button';
+      rejectBtn.disabled = busy;
+      rejectBtn.addEventListener('click', function () { decideApproval(m, 'rejected'); });
+      actions.appendChild(allowBtn);
+      actions.appendChild(rejectBtn);
+      body.appendChild(actions);
+    } else {
+      var res = el('div', 'appr-result');
+      res.innerHTML = ICON_SHIELD;
+      var label = status === 'allowed' ? '已允许，任务继续执行'
+        : (status === 'rejected' ? '已拒绝本次操作' : '该审批已在其他端处理');
+      if (m.decidedAt) label += ' · ' + fmtTime(m.decidedAt);
+      res.appendChild(document.createTextNode(label));
+      body.appendChild(res);
+    }
+    card.appendChild(body);
+    return card;
+  }
+
+  async function decideApproval(m, outcome) {
+    if (!m || m.status === 'processing' || m.status === 'allowed' ||
+        m.status === 'rejected' || m.status === 'expired') return;
+    var sid = m.sid || mapApprovalSessionId(m.sessionId);
+    var msgs = loadMsgs(sid);
+    var idx = msgs.findIndex(function (x) { return x.id === m.id; });
+    if (idx === -1) return;
+    msgs[idx].status = 'processing';
+    saveMsgs(sid, msgs);
+    renderMessages('ifNear');
+
+    try {
+      var r = await api('/api/approvals', {
+        method: 'POST',
+        body: JSON.stringify({ approvalId: m.approvalId, outcome: outcome }),
+        timeoutMs: 8000
+      });
+      msgs = loadMsgs(sid);
+      idx = msgs.findIndex(function (x) { return x.id === m.id; });
+      if (idx === -1) return;
+      if (r && r.ok && r.accepted !== false) {
+        msgs[idx].status = outcome === 'allowed-once' ? 'allowed' : 'rejected';
+        msgs[idx].decidedAt = new Date().toISOString();
+        saveMsgs(sid, msgs);
+        renderMessages('ifNear');
+        toast(outcome === 'allowed-once' ? '已允许，任务继续执行' : '已拒绝');
+      } else if (r && r.ok) {
+        msgs[idx].status = 'expired';
+        msgs[idx].decidedAt = new Date().toISOString();
+        saveMsgs(sid, msgs);
+        renderMessages('ifNear');
+        toast('该审批已被处理，无需重复操作');
+      } else {
+        msgs[idx].status = 'pending';
+        saveMsgs(sid, msgs);
+        renderMessages('ifNear');
+        toast('审批提交失败', 'err');
+      }
+      refreshApprovals();
+    } catch (e) {
+      msgs = loadMsgs(sid);
+      idx = msgs.findIndex(function (x) { return x.id === m.id; });
+      if (idx > -1) {
+        msgs[idx].status = 'pending';
+        saveMsgs(sid, msgs);
+        renderMessages('ifNear');
+      }
+      if (e.code === 401) {
+        toast('令牌无效，请检查 Token', 'err');
+        openTokenOverlay('令牌无效，请重新输入');
+      } else {
+        toast(e.message || '审批提交失败', 'err');
+      }
+    }
+  }
+
+  function mapApprovalSessionId(sid) {
+    if (sid) {
+      if (state.sessions.some(function (s) { return s.id === sid; })) return sid;
+      var s = state.sessions.find(function (x) { return x.serverSessionId === sid; });
+      if (s) return s.id;
+    }
+    return state.currentId;
+  }
+
+  function insertApprovalMessage(item) {
+    var aid = item && item.approvalId;
+    if (!aid) return;
+    var sid = mapApprovalSessionId(item.sessionId);
+    var msgs = loadMsgs(sid);
+    var mid = 'appr-' + aid;
+    if (msgs.some(function (m) { return m.id === mid; })) return;
+    msgs.push({
+      id: mid,
+      role: 'approval',
+      approvalId: aid,
+      sid: sid,
+      sessionId: item.sessionId || null,
+      toolName: item.toolName || '未知工具',
+      reason: item.reason || '',
+      callId: item.callId || '',
+      receivedAt: item.receivedAt || new Date().toISOString(),
+      status: 'pending',
+      at: item.receivedAt || new Date().toISOString()
+    });
+    saveMsgs(sid, msgs);
+    if (sid === state.currentId) renderMessages('ifNear');
+  }
+
+  async function refreshApprovals() {
+    if (!state.token) { updateApprovalBadge(0); return; }
+    if (state._approvalBusy) return;
+    state._approvalBusy = true;
+    try {
+      var r = await api('/api/approvals', { timeoutMs: 6000 });
+      var items = (r && r.items) || [];
+      state.pendingApprovals = items;
+      updateApprovalBadge(items.length);
+      items.forEach(insertApprovalMessage);
+    } catch (e) {
+      updateApprovalBadge(0);
+    } finally {
+      state._approvalBusy = false;
+    }
+  }
+
+  function updateApprovalBadge(n) {
+    $('apprBadgeCount').textContent = n;
+    $('apprBadge').hidden = !(n > 0);
+  }
+
+  function ensureApprovalPoll() {
+    if (!state._approvalTimer) state._approvalTimer = setInterval(refreshApprovals, APPROVAL_INTERVAL);
+  }
+
+  function scrollToPendingApproval() {
+    var chat = $('chat');
+    var card = chat.querySelector('.appr-card.pending');
+    if (!card) {
+      for (var i = 0; i < state.sessions.length; i++) {
+        var s = state.sessions[i];
+        if (s.id === state.currentId) continue;
+        if (loadMsgs(s.id).some(function (m) { return m.role === 'approval' && m.status === 'pending'; })) {
+          switchSession(s.id);
+          break;
+        }
+      }
+      card = $('chat').querySelector('.appr-card.pending');
+    }
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('flash');
+      setTimeout(function () { card.classList.remove('flash'); }, 1600);
+    }
+  }
+
+  function pendingEl() {
+    var wrap = el('div', 'msg assistant');
+    var b = el('div', 'bubble asst pending-bubble');
+    var t = el('span', 'typing');
+    t.innerHTML = '<span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>';
+    b.appendChild(t);
+    b.appendChild(el('span', 'pending-text', '正在执行…'));
+    var clk = el('span', 'pending-clock', '0.0s');
+    clk.id = 'pendingClock';
+    b.appendChild(clk);
+    wrap.appendChild(b);
+    return wrap;
+  }
+
+  /* ================= 流式输出（/api/events 增量轮询） ================= */
+  async function probeEvents(sid) {
+    try {
+      var r = await api('/api/events?sessionId=' + enc(sid) + '&afterSeq=0', { timeoutMs: 6000 });
+      state.streamAvail = true;
+      state.streamBaseSeq = (r && typeof r.lastSeq === 'number') ? r.lastSeq : 0;
+      return true;
+    } catch (e) {
+      state.streamAvail = false;
+      return false;
+    }
+  }
+
+  function startStreaming(sid, msgId) {
+    state.stream = {
+      sid: sid, msgId: msgId,
+      lastSeq: state.streamBaseSeq || 0,
+      buf: '', errBuf: '', tools: [], done: false, el: null, timer: null
+    };
+    var st = state.stream;
+    var elText = $('chat').querySelector('.stream-text');
+    var elTools = $('chat').querySelector('.stream-tools');
+    if (elText) {
+      st.el = { text: elText, tools: elTools, cursor: $('chat').querySelector('.stream-cursor') };
+    }
+    pollEvents();
+    st.timer = setInterval(pollEvents, EVENT_INTERVAL);
+  }
+
+  function stopStreaming() {
+    var st = state.stream;
+    if (st && st.timer) { clearInterval(st.timer); st.timer = null; }
+    if (st && st.done && st.el && st.el.cursor) st.el.cursor.style.display = 'none';
+  }
+
+  // kind 驱动的事件处理（/api/events 标准化类型：text / thinking / tool / done / other）。
+  //   text → 可见文本增量（打字机追加）；tool → 工具进度行；
+  //   done → turn 结束（终止流式，由 finalizeStream 定稿）；thinking → 推理内容（默认隐藏/忽略）；
+  //   other → 忽略或透传。kind 缺失（老后端）时退回按原始 type 猜测，保留既有行为。
+  var TERMINAL_TYPES = ['done', 'complete', 'end', 'finished', 'error', 'failed', 'result'];
+  var TOOL_START_TYPES = ['tool', 'tool_start', 'tool_call', 'call', 'tool_started'];
+  var TOOL_END_TYPES = ['tool_done', 'tool_end', 'tool_result', 'tool_complete'];
+
+  function handleEventItem(st, it) {
+    var kind = String(it.kind || '');
+    var text = it.text != null ? String(it.text) : '';
+    if (kind === 'text') {
+      if (text) st.buf += text; // 可见文本增量
+      return;
+    }
+    if (kind === 'tool') {
+      // 工具调用：显示工具进度行（流式期间无一次性完成判定，先按运行中处理）
+      st.tools.push({ name: text || '调用工具…', done: false });
+      return;
+    }
+    if (kind === 'done') {
+      // turn 结束：终止流式，实际的定稿交给 finalizeStream
+      st.done = true;
+      if (text) st.buf += text;
+      return;
+    }
+    if (kind === 'thinking') return;   // 推理内容：默认隐藏/折叠（不占用可见文本）
+    if (kind === 'other') return;      // 显式忽略或透传
+    if (kind === '') {
+      // 老接口（无 kind 字段）：保留原有按原始 type 猜测的逻辑
+      var type = String(it.type || '').toLowerCase();
+      if (TERMINAL_TYPES.indexOf(type) >= 0) {
+        st.done = true;
+        if (text) st.buf += text;
+        return;
+      }
+      if (TOOL_END_TYPES.indexOf(type) >= 0) {
+        st.tools.push({ name: text || '工具完成', done: true });
+        return;
+      }
+      if (TOOL_START_TYPES.indexOf(type) >= 0) {
+        st.tools.push({ name: text || '调用工具…', done: false });
+        return;
+      }
+      if (type === 'stderr' || type === 'error_text') {
+        if (text) st.errBuf += text;
+        return;
+      }
+      if (text) st.buf += text; // 未知类型：尽量当增量文本
+      return;
+    }
+    // kind 存在但无法识别：兜底——带 text 的一律当可见文本增量
+    if (text) st.buf += text;
+  }
+
+  async function pollEvents() {
+    var st = state.stream;
+    if (!st || st.done || state._polling) return;
+    state._polling = true;
+    try {
+      var r = await api('/api/events?sessionId=' + enc(st.sid) + '&afterSeq=' + st.lastSeq, { timeoutMs: 6000 });
+      var items = (r && r.items) || [];
+      for (var i = 0; i < items.length; i++) handleEventItem(st, items[i]);
+      if (r && typeof r.lastSeq === 'number' && r.lastSeq > st.lastSeq) st.lastSeq = r.lastSeq;
+      updateStreamBubble();
+      if (st.done) stopStreaming();
+    } catch (e) {
+      // 瞬时错误：继续轮询；404 等持续错误在下一轮静默停止
+    } finally {
+      state._polling = false;
+    }
+  }
+
+  function updateStreamBubble() {
+    var st = state.stream;
+    if (!st) return;
+    if (st.el && st.el.text) st.el.text.textContent = st.buf;
+    if (st.el && st.el.tools) {
+      var html = '';
+      st.tools.forEach(function (t) {
+        html += '<span class="tool-line ' + (t.done ? 'done' : 'run') + '">' +
+          (t.done ? '✓' : '<span class="spin"></span>') + ' ' + escHtml(t.name) + '</span>';
+      });
+      st.el.tools.innerHTML = html;
+    }
+    scrollIfNear();
+  }
+
+  function finalizeStream(sid, msgId, result, err) {
+    var st = state.stream;
+    if (st && st.timer) { clearInterval(st.timer); st.timer = null; }
+    var msgs = loadDshMsgs(sid);
+    var idx = msgs.findIndex(function (m) { return m.id === msgId; });
+    if (idx === -1) idx = msgs.length - 1;
+    if (idx < 0) { state.stream = null; return; }
+    var m = msgs[idx];
+    if (err) {
+      m.ok = false;
+      m.stderr = err.message || '执行失败';
+      m.exitCode = null;
+      m.text = (st ? st.buf : '') || '';
+      m.interrupted = true;
+    } else {
+      m.ok = !!result.ok;
+      m.exitCode = typeof result.exitCode === 'number' ? result.exitCode : null;
+      m.elapsedMs = typeof result.elapsedMs === 'number' ? result.elapsedMs : null;
+      m.backend = result.backend || 'dsh';
+      if (hasText(result.stdout)) m.text = result.stdout;
+      else m.text = (st ? st.buf : '') || '';
+      m.stderr = result.stderr || (st ? st.errBuf : '') || '';
+      m.interrupted = false;
+    }
+    m.streaming = false;
+    m.at = new Date().toISOString();
+    msgs[idx] = m;
+    saveDshMsgs(sid, msgs);
+    state.stream = null;
+    state.running = false;
+    state.runSid = null;
+    stopRunClock();
+    updateInputLock();
+    renderMessages('bottom');
+    refreshGlobalHistory(true);
+  }
+
+  /* ================= 发送与执行 ================= */
+  function updateInputLock() {
+    $('sendBtn').disabled = state.running;
+    $('input').readOnly = state.running;
+    $('input').placeholder = state.running ? '上一条任务执行中…' : '输入任务，交给电脑上的 DSH…';
+  }
+  function startRunClock() {
+    state.runStart = Date.now();
+    clearInterval(state.runTimer);
+    state.runTimer = setInterval(function () {
+      var c = $('pendingClock');
+      if (c) c.textContent = ((Date.now() - state.runStart) / 1000).toFixed(1) + 's';
+    }, 100);
+  }
+  function stopRunClock() { clearInterval(state.runTimer); state.runTimer = null; }
+
+  async function sendMessage() {
+    var input = $('input');
+    var text = input.value.trim();
+    if (!text) { toast('请输入任务内容', 'err'); input.focus(); return; }
+    if (state.running) { toast('上一条任务仍在执行中'); return; }
+    if (!state.token) { openTokenOverlay('发送前需要先设置访问令牌'); return; }
+
+    if (state.view && state.view.kind === 'dsh') {
+      await sendDshContinue(text);
+    } else {
+      await sendLocalMessage(text);
+    }
+  }
+
+  // 本地会话：POST /api/exec（原有单飞流程）
+  async function sendLocalMessage(text) {
+    var sid = ensureSession();
+    var userMsg = { id: uid(), role: 'user', text: text, at: new Date().toISOString() };
+    var msgs = loadMsgs(sid);
+    msgs.push(userMsg);
+    saveMsgs(sid, msgs);
+    var s = state.sessions.find(function (x) { return x.id === sid; });
+    if (s && msgs.length === 1) { s.title = firstLine(text, 22); saveSessions(); }
+
+    $('input').value = '';
+    autoGrow($('input'));
+    state.running = true;
+    state.runSid = sid;
+    updateInputLock();
+    startRunClock();
+    renderMessages('smooth');
+
+    var body = { task: text, sessionId: sid };
+    try {
+      if (state.serverSessions) {
+        if (s && !s.serverSessionId) {
+          try {
+            var cr = await api('/api/sessions', { method: 'POST', timeoutMs: 6000 });
+            if (cr && cr.sessionId) { s.serverSessionId = cr.sessionId; saveSessions(); body.sessionId = cr.sessionId; }
+          } catch (e) { /* 创建失败则继续用本地 id */ }
+        } else if (s && s.serverSessionId) {
+          body.sessionId = s.serverSessionId;
+        }
+      }
+      var resp = await api('/api/exec', { method: 'POST', body: JSON.stringify(body) });
+      var r = (resp && resp.result) || {};
+      if (r.sessionId && s && !s.serverSessionId) { s.serverSessionId = r.sessionId; saveSessions(); }
+
+      var asstMsg = {
+        id: uid(), role: 'assistant',
+        text: r.stdout || '',
+        stderr: r.stderr || '',
+        ok: !!r.ok,
+        exitCode: r.exitCode,
+        elapsedMs: r.elapsedMs,
+        backend: r.backend || 'relay',
+        sessionId: r.sessionId || sid,
+        at: new Date().toISOString()
+      };
+      msgs = loadMsgs(sid);
+      msgs.push(asstMsg);
+      saveMsgs(sid, msgs);
+
+      state.running = false;
+      state.runSid = null;
+      stopRunClock();
+      updateInputLock();
+      renderMessages('ifNear');
+      refreshGlobalHistory(true);
+    } catch (e) {
+      state.running = false;
+      state.runSid = null;
+      stopRunClock();
+      updateInputLock();
+      if (e.code === 401) {
+        toast('令牌无效，请检查 Token', 'err');
+        openTokenOverlay('令牌无效，请重新输入');
+      } else {
+        toast(e.message || '执行失败', 'err');
+      }
+      msgs = loadMsgs(sid);
+      msgs.push({
+        id: uid(), role: 'assistant', text: '', stderr: e.message || '执行失败',
+        ok: false, exitCode: null, elapsedMs: 0, backend: 'relay', sessionId: sid,
+        at: new Date().toISOString(), interrupted: true
+      });
+      saveMsgs(sid, msgs);
+      renderMessages('bottom');
+    }
+  }
+
+  // DSH 历史会话「继续对话」：/api/dsh-continue + /api/events 流式
+  async function sendDshContinue(text) {
+    var sid = state.view.sessionId;
+    var userMsg = { id: uid(), role: 'user', text: text, at: new Date().toISOString() };
+    var msgs = loadDshMsgs(sid);
+    msgs.push(userMsg);
+    var asstMsg = {
+      id: uid(), role: 'assistant', text: '', stderr: '',
+      ok: null, exitCode: null, elapsedMs: null, backend: 'dsh',
+      streaming: true, at: new Date().toISOString()
+    };
+    msgs.push(asstMsg);
+    saveDshMsgs(sid, msgs);
+
+    $('input').value = '';
+    autoGrow($('input'));
+    state.running = true;
+    state.runSid = 'dsh:' + sid;
+    updateInputLock();
+    startRunClock();
+    renderMessages('smooth');
+
+    // 事件流可用性探测（首次，不阻塞 continue 的发起）
+    if (state.streamAvail === undefined) {
+      probeEvents(sid).then(function (ok) {
+        if (ok && state.running && state.runSid === 'dsh:' + sid && !state.stream) {
+          startStreaming(sid, asstMsg.id);
+        }
+      });
+    } else if (state.streamAvail) {
+      startStreaming(sid, asstMsg.id);
+    }
+
+    try {
+      var resp = await api('/api/dsh-continue', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId: sid, task: text })
+      });
+      var r = (resp && resp.result) || {};
+      finalizeStream(sid, asstMsg.id, r, null);
+    } catch (e) {
+      if (e.code === 401) openTokenOverlay('令牌无效，请重新输入');
+      finalizeStream(sid, asstMsg.id, null, e);
+    }
+  }
+
+  function autoGrow(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+  }
+
+  /* ================= 连接状态 ================= */
+  function setConn(kind, label, sub) {
+    $('dot').className = 'dot ' + kind;
+    $('connLabel').textContent = label;
+    $('connSub').textContent = sub || '';
+    $('projDot').className = 'dot ' + kind;
+    $('projConnLabel').textContent = label;
+    $('projConnSub').textContent = sub || '';
+  }
+  async function refreshStatus(showDetail) {
+    if (!state.token) { setConn('na', '未设置 Token', '点击管理令牌'); return; }
+    try {
+      var resp = await api('/api/status', { timeoutMs: 6000 });
+      state.status = resp;
+      var label = (resp.agent || 'Agent') + (resp.version ? ' · v' + resp.version : '');
+      var sub = resp.time ? fmtTime(resp.time) : '';
+      if (resp.pending > 0) sub += (sub ? ' · ' : '') + '队列 ' + resp.pending;
+      setConn('on', label, sub);
+      renderSettingsStatus();
+    } catch (e) {
+      if (e.code === 401) {
+        setConn('bad', 'Token 无效');
+        if (showDetail) openTokenOverlay('令牌无效，请重新输入');
+      } else {
+        setConn('off', '连接断开', '自动重试中…');
+      }
+    }
+  }
+  async function probeSessions() {
+    if (!state.token) return;
+    try {
+      var r = await api('/api/sessions', { timeoutMs: 4000 });
+      state.serverSessions = !!(r && r.ok);
+    } catch (e) {
+      state.serverSessions = false;
+    }
+    renderSettingsStatus();
+  }
+  function ensureHeartbeat() {
+    if (!state._hb) state._hb = setInterval(refreshStatus, STATUS_INTERVAL);
+  }
+  function bootConnectivity() {
+    ensureHeartbeat();
+    ensureApprovalPoll();
+    refreshStatus(false);
+    probeSessions();
+    refreshGlobalHistory(true);
+    refreshApprovals();
+    loadWorkspaces(true);
+    loadDshSessions(true);
+  }
+
+  /* ================= 全局记录 ================= */
+  async function refreshGlobalHistory(silent) {
+    if (!state.token) return;
+    try {
+      var r = await api('/api/history', { timeoutMs: 6000 });
+      state.globalHistory = (r && r.items) || [];
+      renderGlobalHistory();
+    } catch (e) { /* 静默：连接状态由心跳提示 */ }
+  }
+  function renderGlobalHistory() {
+    var box = $('ghList');
+    var empty = $('ghEmpty');
+    box.textContent = '';
+    var items = state.globalHistory.slice(0, HISTORY_LIMIT);
+    empty.hidden = items.length > 0;
+    if (!items.length) return;
+    var total = state.globalHistory.length;
+    $('ghCount').textContent = total > HISTORY_LIMIT ? '最近 ' + HISTORY_LIMIT + ' / ' + total : '共 ' + total;
+    items.forEach(function (h) { box.appendChild(ghItem(h)); });
+  }
+  function ghItem(h) {
+    var art = el('div', 'gh-item');
+    var head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'gh-head';
+    head.setAttribute('aria-expanded', 'false');
+    var chip = el('span', 'chip ' + (h.ok ? 'ok' : 'fail'), h.ok ? '✓' : '✗');
+    var task = el('span', 'gh-task', firstLine(h.task, 42));
+    var time = el('span', 'gh-time', fmtTime(h.at));
+    head.appendChild(chip);
+    head.appendChild(task);
+    head.appendChild(time);
+
+    var det = el('div', 'gh-detail');
+    det.hidden = true;
+    if (hasText(h.stderr)) {
+      det.appendChild(el('div', 'gh-lbl', '错误输出 stderr'));
+      det.appendChild(ghPre(h.stderr, true));
+    }
+    if (hasText(h.stdout)) {
+      det.appendChild(el('div', 'gh-lbl', '标准输出 stdout'));
+      det.appendChild(ghPre(h.stdout, false));
+    }
+    if (!hasText(h.stdout) && !hasText(h.stderr)) {
+      det.appendChild(el('div', 'noout', '（无输出）'));
+    }
+    head.addEventListener('click', function () {
+      det.hidden = !det.hidden;
+      head.setAttribute('aria-expanded', String(!det.hidden));
+    });
+    art.appendChild(head);
+    art.appendChild(det);
+    return art;
+  }
+  function ghPre(content, isErr) {
+    var pre = el('pre', isErr ? 'err' : '');
+    pre.textContent = content;
+    return pre;
+  }
+
+  /* ================= 设置状态 ================= */
+  function renderSettingsStatus() {
+    var s = state.status || {};
+    $('stAgent').textContent = s.agent || '—';
+    $('stVer').textContent = s.version ? 'v' + s.version : '—';
+    $('stTime').textContent = s.time ? fmtTime(s.time, true) : '—';
+    $('stQueue').textContent = typeof s.pending === 'number' ? String(s.pending) : '—';
+    $('stMode').textContent = state.serverSessions ? '服务端会话' : '本地会话（后端暂无 /api/sessions）';
+  }
+
+  /* ================= 面包屑 ================= */
+  function updateCrumb() {
+    var c = $('crumbCur');
+    if (state.view && state.view.kind === 'dsh') {
+      c.textContent = (state.view.projectTitle || '项目') + ' › ' + (state.view.sessionTitle || '会话');
+    } else {
+      var s = state.sessions.find(function (x) { return x.id === state.currentId; });
+      c.textContent = '📱 我的对话 › ' + (s ? (s.title || '新会话') : '新会话');
+    }
+  }
+
+  /* ================= 令牌 ================= */
+  function openTokenOverlay(hint) {
+    $('tokenHint').textContent = hint || '输入电脑端 Agent 启动日志中打印的访问令牌';
+    $('tokenInput').value = state.token;
+    $('tokenOverlay').classList.add('show');
+    setTimeout(function () { $('tokenInput').focus(); }, 120);
+  }
+  function closeTokenOverlay() { $('tokenOverlay').classList.remove('show'); }
+  function toggleTokenVisible() {
+    var input = $('tokenInput');
+    var show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    $('tokenToggle').setAttribute('aria-pressed', String(show));
+    $('tokenToggle').innerHTML = show ? ICON_EYE_OFF : ICON_EYE;
+  }
+  function saveTokenFromOverlay() {
+    var v = $('tokenInput').value.trim();
+    if (!v) { toast('请输入令牌', 'err'); $('tokenInput').focus(); return; }
+    state.token = v;
+    localStorage.setItem(LS_TOKEN, v);
+    closeTokenOverlay();
+    bootConnectivity();
+    if (state.running) { toast('令牌已更新，将在下次任务生效'); }
+    else { toast('令牌已保存，正在连接…'); }
+  }
+  function clearToken() {
+    state.token = '';
+    localStorage.removeItem(LS_TOKEN);
+    closeTokenOverlay();
+    setConn('na', '未设置 Token', '点击管理令牌');
+    renderSettingsStatus();
+    renderProjects();
+    toast('已清除令牌');
+  }
+
+  /* ================= Toast ================= */
+  var toastTimer = null;
+  function toast(msg, type) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (type === 'err' ? ' err' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2400);
+  }
+
+  /* ================= 中断修复（本地会话，应用刷新后结果未知） ================= */
+  function repairInterrupted() {
+    if (!state.sessions.length) return;
+    var s = state.sessions[0];
+    var msgs = loadMsgs(s.id);
+    if (msgs.length && msgs[msgs.length - 1].role === 'user') {
+      msgs.push({
+        id: uid(), role: 'assistant', text: '',
+        stderr: '应用刷新，本次执行结果未知，可在「全局记录」中查看。',
+        ok: false, exitCode: null, elapsedMs: 0, backend: 'relay',
+        sessionId: s.id, at: new Date().toISOString(), interrupted: true
+      });
+      saveMsgs(s.id, msgs);
+    }
+  }
+
+  /* ================= 初始化 ================= */
+  function boot() {
+    NAV_PAGES = [$('pageChat'), $('pageProjects'), $('pageSessions'), $('pageAgents')];
+    state.sessions = loadSessions();
+    if (!state.sessions.length) { state.sessions.push(newSessionObj()); saveSessions(); }
+    if (!state.currentId || !state.sessions.some(function (s) { return s.id === state.currentId; })) {
+      state.currentId = state.sessions[0].id;
+    }
+    state.view = { kind: 'local', id: state.currentId };
+    repairInterrupted();
+    renderMessages('bottom');
+    updateCrumb();
+    renderProjects();
+    renderSettingsStatus();
+    updateInputLock();
+    applyNav();
+
+    if (state.token) {
+      bootConnectivity();
+    } else {
+      setConn('na', '未设置 Token', '点击管理令牌');
+      openTokenOverlay('首次使用：输入电脑端 Agent 启动日志中打印的访问令牌');
+    }
+
+    // 事件
+    $('menuBtn').addEventListener('click', function () { navPush(1); });
+    $('crumbBar').addEventListener('click', function () {
+      if (navTop === 0) navPush(1); else navPopTo(1);
+    });
+    $('projBack').addEventListener('click', navPop);
+    $('sessBack').addEventListener('click', navPop);
+    // Agent 活动入口/返回/刷新
+    $('agentEntry').addEventListener('click', function () { navPush(3); loadAgents(true); });
+    $('agtBack').addEventListener('click', navPop);
+    $('agtRefresh').addEventListener('click', function () { loadAgents(true); toast('正在刷新 Agent 活动…'); });
+    $('apprBadge').addEventListener('click', scrollToPendingApproval);
+    $('newSessBtn').addEventListener('click', function () { newSession(); navPopTo(0); });
+    $('sendBtn').addEventListener('click', sendMessage);
+    $('connPill').addEventListener('click', function () { refreshStatus(true); });
+    $('projConnRow').addEventListener('click', function () { refreshStatus(true); });
+    $('wsRefresh').addEventListener('click', function () { loadWorkspaces(true); loadDshSessions(true); toast('正在刷新 DSH 工作区…'); });
+    $('ghRefresh').addEventListener('click', function () { refreshGlobalHistory(false); });
+    $('stRefresh').addEventListener('click', function () { bootConnectivity(); toast('正在重新检测…'); });
+    $('tokenOpen').addEventListener('click', function () { openTokenOverlay(); });
+    $('tokenSave').addEventListener('click', saveTokenFromOverlay);
+    $('tokenClear').addEventListener('click', clearToken);
+    $('tokenCancel').addEventListener('click', closeTokenOverlay);
+    $('tokenToggle').addEventListener('click', toggleTokenVisible);
+
+    $('projSearch').addEventListener('input', function () {
+      state.projQuery = this.value.trim().toLowerCase();
+      renderProjects();
+    });
+    $('sessSearch').addEventListener('input', function () {
+      state.sessQuery = this.value.trim().toLowerCase();
+      renderSessionsPage();
+    });
+
+    $('input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    $('input').addEventListener('input', function () { autoGrow($('input')); });
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) {
+        refreshStatus(false);
+        refreshGlobalHistory(true);
+        refreshApprovals();
+        loadWorkspaces(false);
+        loadDshSessions(false);
+      }
+    });
+
+    attachSwipe($('pageProjects'));
+    attachSwipe($('pageSessions'));
+    attachSwipe($('pageAgents'));
+  }
+
+  boot();
+
+  /* ================= 调试接口 ================= */
+  window.__app = {
+    state: state,
+    api: api,
+    sendMessage: sendMessage,
+    newSession: newSession,
+    switchSession: switchSession,
+    deleteSession: deleteSession,
+    navPush: navPush,
+    navPop: navPop,
+    navPopTo: navPopTo,
+    openProject: openProject,
+    openDshSession: openDshSession,
+    loadWorkspaces: loadWorkspaces,
+    loadDshSessions: loadDshSessions,
+    loadAgents: loadAgents,
+    resolveAgentSession: resolveAgentSession,
+    refreshStatus: refreshStatus,
+    refreshGlobalHistory: refreshGlobalHistory,
+    probeSessions: probeSessions,
+    refreshApprovals: refreshApprovals,
+    decideApproval: decideApproval,
+    scrollToPendingApproval: scrollToPendingApproval,
+    openTokenOverlay: openTokenOverlay,
+    saveTokenFromOverlay: saveTokenFromOverlay,
+    clearToken: clearToken,
+    renderMarkdown: renderMarkdown,
+    fmtElapsed: fmtElapsed,
+    fmtTime: fmtTime,
+    fmtAgo: fmtAgo,
+    escHtml: escHtml,
+    toast: toast,
+    loadMsgs: loadMsgs,
+    renderMessages: renderMessages
+  };
+})();
