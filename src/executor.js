@@ -674,6 +674,33 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         return { ok: false, error: 'session.cancel 失败: ' + String(e) };
       }
     },
+    // GET /api/agents?sessionId=：转发 subagent.list，归一化子代理列表
+    // DSH subagent.list 请求 {parentSessionId} → {entries, parentAvailable}
+    //   每条 entry 探测字段：{kind, id, mode, label, activity, hasChildren}
+    //   id=子代理会话 id（childSessionId）；activity 为 'running'|'inactive'（运行中/空闲）
+    async listAgents(sessionId) {
+      const sid = String(sessionId || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      let value;
+      try {
+        value = await fetchRpc('subagent.list', { parentSessionId: sid });
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'subagent.list 失败: ' + String(e) };
+      }
+      if (!value || typeof value !== 'object') {
+        return { ok: false, code: 'bad-response', error: 'subagent.list 返回结构异常' };
+      }
+      const entries = Array.isArray(value.entries) ? value.entries : [];
+      const items = entries.map((e) => ({
+        sessionId: String(e && e.id || ''),
+        label: typeof (e && e.label) === 'string' ? e.label : '',
+        activity: typeof (e && e.activity) === 'string' ? e.activity : undefined,
+        kind: typeof (e && e.kind) === 'string' ? e.kind : undefined,
+        mode: typeof (e && e.mode) === 'string' ? e.mode : undefined,
+        hasChildren: !!(e && e.hasChildren),
+      }));
+      return { ok: true, parentAvailable: !!value.parentAvailable, items };
+    },
   };
 
   // 审批转发中继：懒创建单例（首次访问 executor.relay 才建立常驻 WebSocket 连接）。

@@ -225,6 +225,25 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         sendJson(res, out.ok ? 200 : 400, out);
         return;
       }
+      // ---- Agent 活动：转发 subagent.list → {ok, parentAvailable, items:[{sessionId,label,activity,kind,mode,hasChildren}]}
+      if (req.method === 'GET' && url.pathname === '/api/agents') {
+        if (!auth(req, res)) return;
+        if (typeof executor.listAgents !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const sessionId = (url.searchParams.get('sessionId') || '').trim();
+        if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
+        try {
+          const out = await executor.listAgents(sessionId);
+          if (!out.ok) {
+            const code = out.code === 'backend-unavailable' ? 502 : 400;
+            sendJson(res, code, { ok: false, error: out.error });
+            return;
+          }
+          sendJson(res, 200, { ok: true, parentAvailable: out.parentAvailable, items: out.items });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e) });
+        }
+        return;
+      }
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: 'not found' }));
     } catch (e) {

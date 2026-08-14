@@ -292,6 +292,36 @@
   }
   .new-sess-btn:active { transform: scale(0.98); }
 
+  /* ================= Agent 活动（子代理列表） ================= */
+  .agt-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 14px; margin-bottom: 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-soft);
+    background: var(--card);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  }
+  .agt-avatar {
+    flex: none; width: 40px; height: 40px; border-radius: 12px;
+    display: grid; place-items: center; font-size: 18px;
+    background: linear-gradient(135deg, var(--accent-soft), rgba(108, 140, 255, 0.06));
+    border: 1px solid rgba(77, 107, 254, 0.25);
+  }
+  .agt-main { flex: 1; min-width: 0; }
+  .agt-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agt-meta { font-size: 11px; color: var(--faint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
+  .agt-pill {
+    flex: none; display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; font-family: var(--mono);
+  }
+  .agt-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .agt-pill.running { color: var(--ok); background: var(--ok-soft); }
+  .agt-pill.running::before { box-shadow: 0 0 6px var(--ok); animation: blink 1.2s ease-in-out infinite; }
+  .agt-pill.idle { color: var(--faint); background: rgba(255, 255, 255, 0.06); }
+  .agt-pill.other { color: #C6D2FF; background: rgba(77, 107, 254, 0.16); }
+  .agt-refresh { margin-left: auto; min-height: 30px; padding: 0 10px; }
+
   /* 提示条（API 缺口 / 加载中） */
   .proj-note {
     margin: 10px 4px 4px;
@@ -709,7 +739,9 @@
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
     <div class="brand"><div class="brand-name">项目与对话</div></div>
-    <span class="icon-btn-sm" style="visibility:hidden"></span>
+    <button type="button" class="icon-btn" id="agentEntry" aria-label="Agent 活动">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 6a6 6 0 0 1 6 6h3l-2.6 2.6L16.8 17v3M12 18a6 6 0 0 1-6-6H3l2.6-2.6L7.2 7V4"/><circle cx="9.5" cy="9.5" r="1"/><circle cx="14.5" cy="9.5" r="1"/></svg>
+    </button>
   </header>
 
   <div class="page-body">
@@ -806,6 +838,26 @@
   </div>
 </section>
 
+<!-- ==================== 层级 3：Agent 活动（子代理列表） ==================== -->
+<section class="nav-page" id="pageAgents" data-page="3" aria-hidden="true">
+  <header class="topbar navbar">
+    <button type="button" class="icon-btn nav-back" id="agtBack" aria-label="返回项目列表">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="brand"><div class="brand-name">🤖 Agent 活动</div></div>
+    <button type="button" class="mini-btn agt-refresh" id="agtRefresh">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      刷新
+    </button>
+  </header>
+
+  <div class="page-body">
+    <div class="dsec-title" id="agtCtx" style="margin:0 4px 12px"></div>
+    <div id="agtList"></div>
+    <div class="dsec-empty" id="agtEmpty" hidden>当前会话暂无子代理</div>
+  </div>
+</section>
+
 <!-- ============ 令牌弹窗 ============ -->
 <div class="overlay" id="tokenOverlay" role="dialog" aria-modal="true" aria-label="访问令牌">
   <div class="overlay-card">
@@ -873,7 +925,12 @@
     streamBaseSeq: 0,
     _polling: false,
     projQuery: '',
-    sessQuery: ''
+    sessQuery: '',
+    // Agent 活动
+    agents: null,          // 最近一次 /api/agents 结果 {parentAvailable, items}:[]（null=加载中）
+    agentsError: '',
+    agentsSid: '',         // 显示中所用的 sessionId
+    agentsLoadedAt: 0
   };
 
   var ICON_GEAR = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
@@ -1374,6 +1431,115 @@
       if (e.code === 401) openTokenOverlay('令牌无效，请重新输入');
     }
     renderMessages('bottom');
+  }
+
+  /* ================= 层级 3：Agent 活动（子代理列表） ================= */
+  // 决定要查询的父会话：优先当前打开的电脑会话，否则取最近的 DSH 会话
+  function resolveAgentSession() {
+    if (state.view && state.view.kind === 'dsh' && state.view.sessionId) return { sessionId: state.view.sessionId, title: state.view.sessionTitle };
+    var list = (state.dshSessions || []).slice().sort(function (a, b) {
+      return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+    });
+    var s = list[0];
+    if (s) return { sessionId: s.sessionId, title: s.title || baseName(s.cwd) || '最近会话' };
+    return null;
+  }
+
+  async function loadAgents(force) {
+    if (!state.token) { renderAgents(); return; }
+    // 未强制刷新时 15s 内复用缓存
+    if (!force && state.agents && Date.now() - state.agentsLoadedAt < 15000) { renderAgents(); return; }
+    var rctx = resolveAgentSession();
+    if (!rctx) { state.agents = null; state.agentsError = ''; state.agentsSid = ''; renderAgents(); return; }
+    state.agents = null; // 加载中
+    state.agentsSid = rctx.sessionId;
+    state.agentsError = '';
+    renderAgents();
+    try {
+      var r = await api('/api/agents?sessionId=' + enc(rctx.sessionId), { timeoutMs: 8000 });
+      state.agents = {
+        parentAvailable: !!(r && r.parentAvailable),
+        items: (r && r.items) || []
+      };
+      state.agentsError = '';
+      state.agentsLoadedAt = Date.now();
+    } catch (e) {
+      state.agents = null;
+      state.agentsError = e.code === 404 ? '后端未实现 /api/agents' : (e.code === 401 ? '令牌无效，请检查 Token' : (e.message || 'Agent 活动不可用'));
+      if (e.code === 401) openTokenOverlay('令牌无效，请重新输入');
+    }
+    renderAgents();
+  }
+
+  function agentStatusLabel(a) {
+    if (!a || !a.activity) return '';
+    var act = String(a.activity).toLowerCase();
+    if (act === 'running' || act === 'active' || act === 'working') return { cls: 'running', text: '运行中' };
+    if (act === 'inactive' || act === 'done' || act === 'idle' || act === 'complete' || act === 'completed') {
+      return { cls: 'idle', text: act === 'inactive' ? '空闲' : '完成' };
+    }
+    return { cls: 'other', text: String(a.activity) };
+  }
+
+  function renderAgents() {
+    var listBox = $('agtList');
+    var emptyBox = $('agtEmpty');
+    var ctx = $('agtCtx');
+    var rctx = resolveAgentSession();
+
+    // 上下文标题
+    if (ctx) {
+      ctx.textContent = '';
+      if (rctx) ctx.appendChild(el('span', '', '会话：' + (state.agentsSid ? state.agentsSid.slice(0, 8) : '…')));
+      else ctx.textContent = '请先打开一个电脑端会话';
+    }
+
+    listBox.textContent = '';
+    if (!state.token) {
+      emptyBox.hidden = false;
+      emptyBox.textContent = '未设置 Token，无法查看 Agent 活动。';
+      return;
+    }
+    if (state.agentsError) {
+      emptyBox.hidden = false;
+      emptyBox.textContent = 'Agent 活动不可用（' + state.agentsError + '）。';
+      return;
+    }
+    if (!rctx) {
+      emptyBox.hidden = false;
+      emptyBox.textContent = '当前没有电脑端会话，请先在「项目与对话」中打开一个电脑会话。';
+      return;
+    }
+    if (!state.agents) {
+      emptyBox.hidden = true;
+      listBox.appendChild(el('div', 'proj-note info', '正在加载子代理…'));
+      return;
+    }
+    if (!state.agents.parentAvailable) {
+      emptyBox.hidden = false;
+      emptyBox.textContent = '该会话不可作为父会话（parentAvailable=false），暂时无法查看子代理。';
+      return;
+    }
+    var items = state.agents.items || [];
+    emptyBox.hidden = items.length > 0;
+    if (!items.length) { emptyBox.textContent = '当前会话暂无子代理'; return; }
+    items.forEach(function (a) {
+      var item = el('div', 'agt-item');
+      var avatar = el('span', 'agt-avatar', '🤖');
+      var main = el('div', 'agt-main');
+      main.appendChild(el('div', 'agt-title', a.label || '未命名子代理'));
+      var meta = '#' + (a.sessionId ? a.sessionId.slice(0, 8) : '');
+      if (a.kind) meta += ' · ' + a.kind;
+      if (a.mode) meta += ' · ' + a.mode;
+      if (a.hasChildren) meta += ' · 有子代理';
+      main.appendChild(el('div', 'agt-meta', meta));
+      var st = agentStatusLabel(a);
+      var pill = el('span', 'agt-pill ' + (st ? st.cls : 'other'), st ? st.text : (a.activity ? a.activity : '—'));
+      item.appendChild(avatar);
+      item.appendChild(main);
+      item.appendChild(pill);
+      listBox.appendChild(item);
+    });
   }
 
   /* ================= Markdown 简单渲染（先转义再解析，安全） ================= */
@@ -2407,7 +2573,7 @@
 
   /* ================= 初始化 ================= */
   function boot() {
-    NAV_PAGES = [$('pageChat'), $('pageProjects'), $('pageSessions')];
+    NAV_PAGES = [$('pageChat'), $('pageProjects'), $('pageSessions'), $('pageAgents')];
     state.sessions = loadSessions();
     if (!state.sessions.length) { state.sessions.push(newSessionObj()); saveSessions(); }
     if (!state.currentId || !state.sessions.some(function (s) { return s.id === state.currentId; })) {
@@ -2436,6 +2602,10 @@
     });
     $('projBack').addEventListener('click', navPop);
     $('sessBack').addEventListener('click', navPop);
+    // Agent 活动入口/返回/刷新
+    $('agentEntry').addEventListener('click', function () { navPush(3); loadAgents(true); });
+    $('agtBack').addEventListener('click', navPop);
+    $('agtRefresh').addEventListener('click', function () { loadAgents(true); toast('正在刷新 Agent 活动…'); });
     $('apprBadge').addEventListener('click', scrollToPendingApproval);
     $('newSessBtn').addEventListener('click', function () { newSession(); navPopTo(0); });
     $('sendBtn').addEventListener('click', sendMessage);
@@ -2478,6 +2648,7 @@
 
     attachSwipe($('pageProjects'));
     attachSwipe($('pageSessions'));
+    attachSwipe($('pageAgents'));
   }
 
   boot();
@@ -2497,6 +2668,8 @@
     openDshSession: openDshSession,
     loadWorkspaces: loadWorkspaces,
     loadDshSessions: loadDshSessions,
+    loadAgents: loadAgents,
+    resolveAgentSession: resolveAgentSession,
     refreshStatus: refreshStatus,
     refreshGlobalHistory: refreshGlobalHistory,
     probeSessions: probeSessions,
