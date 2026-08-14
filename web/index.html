@@ -386,12 +386,6 @@
   .msg.assistant { align-self: flex-start; align-items: flex-start; }
 
   .bubble { padding: 11px 14px; font-size: 15px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
-  .bubble.user {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #FFFFFF;
-    border-radius: 18px 18px 4px 18px;
-    box-shadow: 0 6px 18px rgba(77, 107, 254, 0.28);
-  }
   .bubble.asst {
     background: var(--card);
     border: 1px solid var(--border);
@@ -427,6 +421,46 @@
   .stderr pre { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; color: #FCA5A5; max-height: 32vh; overflow: auto; }
   .noout { color: var(--faint); font-size: 13px; padding: 2px 0; }
   .asst-meta { margin-top: 8px; display: flex; gap: 10px; font-size: 11px; color: var(--faint); align-items: center; }
+
+  /* 用户消息气泡（蓝紫渐变） */
+  .msg.user > .bubble {
+    background: linear-gradient(135deg, #4D6BFE 0%, #6C8CFF 100%);
+    color: #FFFFFF; border: none; border-radius: 18px 18px 4px 18px;
+    box-shadow: 0 2px 8px rgba(77, 107, 254, 0.25);
+  }
+  /* 助手消息增强（毛玻璃 + 紫色描边 + 头像区） */
+  .msg.asst {
+    display: flex; flex-direction: row; align-items: flex-start; flex-wrap: wrap;
+    gap: 8px; max-width: 90%; align-self: flex-start;
+  }
+  .asst-avatar {
+    width: 28px; height: 28px; flex: none; border-radius: 50%;
+    background: linear-gradient(135deg, #4D6BFE 0%, #6C8CFF 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #FFF; letter-spacing: -0.5px;
+    margin-top: 2px;
+  }
+  .msg.asst > .bubble {
+    flex: 1 1 auto; min-width: 0;
+    border-color: rgba(77, 107, 254, 0.2);
+    border-radius: 4px 18px 18px 18px;
+  }
+  /* 空态居中引导 */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 40vh; text-align: center; color: var(--faint); padding: 40px 24px;
+  }
+  .empty-state-icon {
+    width: 62px; height: 62px; border-radius: 18px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: grid; place-items: center;
+    color: #fff; font-weight: 800; font-size: 24px;
+    font-family: var(--mono);
+    box-shadow: 0 10px 30px rgba(77, 107, 254, 0.4);
+    margin-bottom: 14px;
+  }
+  .empty-state-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+  .empty-state-sub { font-size: 13px; line-height: 1.6; max-width: 300px; }
 
   /* 流式输出（打字机） */
   .stream-text { white-space: pre-wrap; word-break: break-word; font-size: 14.5px; line-height: 1.6; min-height: 1.3em; }
@@ -537,17 +571,7 @@
   .pending-text { font-size: 13px; color: var(--muted); }
   .pending-clock { font-family: var(--mono); font-size: 12px; color: var(--faint); }
 
-  /* 欢迎页 */
-  .welcome { margin: auto; text-align: center; padding: 20px 8px; display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--faint); }
-  .w-logo {
-    width: 62px; height: 62px; border-radius: 18px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 24px;
-    font-family: var(--mono);
-    box-shadow: 0 10px 30px rgba(77, 107, 254, 0.4);
-  }
-  .w-title { font-size: 16px; font-weight: 700; color: var(--text); }
-  .w-sub { font-size: 13px; line-height: 1.6; max-width: 300px; }
+  /* 欢迎页（快捷指令 chips 复用） */
   .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .chip-ex {
     padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border);
@@ -1676,10 +1700,10 @@
   }
 
   function welcomeEl() {
-    var w = el('div', 'welcome');
-    w.appendChild(el('div', 'w-logo', '>_'));
-    w.appendChild(el('div', 'w-title', '你好，我是电脑上的 DSH'));
-    w.appendChild(el('div', 'w-sub', '在手机上发送任务，远程控制电脑端 DeepSeek Harness 执行，结果实时返回。'));
+    var w = el('div', 'empty-state');
+    w.appendChild(el('div', 'empty-state-icon', '>_'));
+    w.appendChild(el('div', 'empty-state-title', '你好，我是电脑上的 DSH'));
+    w.appendChild(el('div', 'empty-state-sub', '在手机上发送任务，远程控制电脑端 DeepSeek Harness 执行，结果实时返回。'));
     var chips = el('div', 'chips');
     [
       '检查 C 盘剩余空间，列出占用最大的 5 个文件',
@@ -1693,10 +1717,12 @@
   }
 
   function dshWelcomeEl() {
-    var w = el('div', 'welcome');
-    w.appendChild(el('div', 'w-logo', '💬'));
-    w.appendChild(el('div', 'w-title', 'DSH 历史会话'));
-    w.appendChild(el('div', 'w-sub', '这是电脑端 DSH 的历史会话（只读展示）。发送消息将「继续对话」，结果实时流式返回。'));
+    var w = el('div', 'empty-state');
+    var icon = el('div', 'empty-state-icon');
+    icon.innerHTML = ICON_BUBBLE;
+    w.appendChild(icon);
+    w.appendChild(el('div', 'empty-state-title', 'DSH 历史会话'));
+    w.appendChild(el('div', 'empty-state-sub', '这是电脑端 DSH 的历史会话（只读展示）。发送消息将「继续对话」，结果实时流式返回。'));
     var chips = el('div', 'chips');
     [
       '总结这个项目当前的进展',
@@ -1720,6 +1746,12 @@
     return b;
   }
 
+  function asstAvatarEl() {
+    var a = el('div', 'asst-avatar', 'DSH');
+    a.setAttribute('aria-hidden', 'true');
+    return a;
+  }
+
   // DSH 历史条目（read-only）
   function dshItemEl(it) {
     var role = it.role || 'assistant';
@@ -1736,7 +1768,8 @@
       tw.appendChild(el('div', 'meta', fmtTime(it.time || it.at)));
       return tw;
     }
-    var aw = el('div', 'msg assistant');
+    var aw = el('div', 'msg asst');
+    aw.appendChild(asstAvatarEl());
     var b = el('div', 'bubble asst');
     var head = el('div', 'asst-head');
     head.appendChild(el('span', 'asst-name', 'deepseekharness-relay'));
@@ -1760,7 +1793,8 @@
   }
 
   function asstEl(m) {
-    var wrap = el('div', 'msg assistant');
+    var wrap = el('div', 'msg asst');
+    wrap.appendChild(asstAvatarEl());
     var b = el('div', 'bubble asst');
 
     if (m.streaming) {
@@ -2054,7 +2088,8 @@
   }
 
   function pendingEl() {
-    var wrap = el('div', 'msg assistant');
+    var wrap = el('div', 'msg asst');
+    wrap.appendChild(asstAvatarEl());
     var b = el('div', 'bubble asst pending-bubble');
     var t = el('span', 'typing');
     t.innerHTML = '<span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>';
