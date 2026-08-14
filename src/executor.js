@@ -142,6 +142,75 @@ function cryptoRandom() {
 }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+// ---- DSH 只读同步 / 历史归一化（探测结论）----
+// workspace.list → value.items[{workspaceId, path, title, sessionIds, ...}]
+// session.list   → value.items[{sessionId, updatedAt(epoch ms), running, blank, cwd,
+//                               projections.values.title, ...}]（title 零额外 RPC 可得）
+// session.history→ value.events[{event:{type, seq, time(epoch ms), data}}]（limit/afterSeq 参数被忽略，返回全量）
+// events.mux WS 帧: {"type":"server-request","rpcId","method","payload"}
+//   method='session/event'     → payload:{type:'session/event', sessionId, event}（event 结构与 history 一致）
+//   method='session/subscribed'→ payload:{type:'session/subscribed', sessionId, lastSeq}（连接时水位）
+//   增量文本: assistant/chunk 的 data.chunk.{type:'text-delta'|'reasoning-delta', text}
+function isoTime(t) {
+  const n = Number(t);
+  return new Date(Number.isFinite(n) && n > 0 ? n : Date.now()).toISOString();
+}
+
+// 会话事件 → 流式条目（/api/events 增量用）
+// 提取规则：assistant/chunk 增量文本；assistant/message 与 user/message 的 content[].text；
+//   tool/call 的 name；其余事件保留 type 但无 text（前端可据此感知 turn/end 等状态）。
+function eventToStreamItem(ev) {
+  if (!ev || typeof ev !== 'object') return null;
+  const type = ev.type;
+  const data = ev.data || {};
+  let text;
+  let subtype = null;
+  if (type === 'assistant/chunk') {
+    const chunk = data.chunk;
+    if (chunk && typeof chunk.text === 'string') { text = chunk.text; subtype = chunk.type || null; }
+  } else if (type === 'assistant/message' || type === 'user/message') {
+    const content = type === 'assistant/message' ? (data.message && data.message.content) : data.content;
+    if (Array.isArray(content)) {
+      const t = content.filter((c) => c && c.type === 'text').map((c) => c.text || '').join('');
+      if (t) text = t;
+    }
+  } else if (type === 'tool/call') {
+    if (data.name) text = String(data.name);
+  }
+  const item = { seq: Number(ev.seq) || 0, type, time: isoTime(ev.time) };
+  if (text !== undefined) item.text = text;
+  if (subtype) item.subtype = subtype;
+  return item;
+}
+
+// session.history events → 对话消息数组（/api/dsh-history 用）
+function historyToMessages(events) {
+  const items = [];
+  for (const ev of events || []) {
+    const e = ev && ev.event;
+    if (!e) continue;
+    const data = e.data || {};
+    if (e.type === 'user/message' && Array.isArray(data.content)) {
+      const text = data.content.filter((c) => c && c.type === 'text').map((c) => c.text || '').join('');
+      if (text) items.push({ role: 'user', text, time: isoTime(e.time) });
+    } else if (e.type === 'assistant/message') {
+      const content = data.message && data.message.content;
+      if (Array.isArray(content)) {
+        const text = content.filter((c) => c && c.type === 'text').map((c) => c.text || '').join('');
+        if (text) items.push({ role: 'assistant', text, time: isoTime(e.time) });
+      }
+    } else if (e.type === 'tool/call' && data.name) {
+      items.push({ role: 'tool', text: String(data.name), time: isoTime(e.time) });
+    }
+  }
+  return items;
+}
+
+// 归一化路径（Windows 反斜杠 → 正斜杠小写），供 cwd 前缀分组
+function normPath(p) {
+  return String(p || '').replace(/\\/g, '/').toLowerCase();
+}
+
 // ---- DSH 审批转发：常驻 WebSocket 监听 approval/requested，回传结果到 /api/respond ----
 // 事件流（探测结论）：/api/events.mux 是 WebSocket 而非 SSE —— 普通 fetch 返回 426 upgrade required。
 //   用 Node 22+ 全局 WebSocket（零依赖、无需鉴权头）连 ws://127.0.0.1:3080/api/events.mux，
@@ -163,6 +232,63 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
   let retryTimer = null;
   let activeWs = null; // 当前 WebSocket 连接（供 stop() 关闭）
 
+  // ---- 会话事件流缓冲（流式输出轮询源）----
+  // events.mux 除了 approval/requested，还推送 session/event（含 assistant/chunk 增量文本）
+  // 与 session/subscribed（连接时各会话 lastSeq 水位）。每个会话最近的事件缓存为 seq 升序数组，
+  // getEvents(sessionId, afterSeq) 返回 seq > afterSeq 的增量；缓冲为空或落后于请求水位时
+  // 懒回填 session.history（5s 冷却，避免反复拉取大历史；history 无 limit 参数会返回全量）。
+  const eventsBySession = new Map(); // sessionId -> [{seq,type,text?,subtype?,time}]（按 seq 升序）
+  const subscribedSeq = new Map();   // sessionId -> 连接时 lastSeq 水位（判断是否需要回填）
+  const lastHistoryFetch = new Map();// sessionId -> 上次 history 回填时间（冷却用）
+  const MAX_EVENTS_PER_SESSION = 200; // 每会话保留最近 200 条
+  const MAX_EVENT_SESSIONS = 200;     // 缓冲的会话数上限（LRU 淘汰）
+  const HISTORY_FETCH_COOLDOWN_MS = 5000;
+
+  function pushEvent(sessionId, item) {
+    let arr = eventsBySession.get(sessionId);
+    if (!arr) {
+      if (eventsBySession.size >= MAX_EVENT_SESSIONS) {
+        const oldestKey = eventsBySession.keys().next().value; // Map 插入序最旧
+        if (oldestKey !== undefined) eventsBySession.delete(oldestKey);
+      }
+      arr = [];
+      eventsBySession.set(sessionId, arr);
+    } else {
+      eventsBySession.delete(sessionId); // 移到尾部（LRU：最近更新的会话最后淘汰）
+      eventsBySession.set(sessionId, arr);
+    }
+    const last = arr.length ? arr[arr.length - 1].seq : -1;
+    if (item.seq <= last) return; // 按 seq 去重（WS 实时帧与 history 回填可能重复）
+    arr.push(item);
+    if (arr.length > MAX_EVENTS_PER_SESSION) arr.splice(0, arr.length - MAX_EVENTS_PER_SESSION);
+  }
+
+  // 轮询增量：返回该会话 seq > afterSeq 的新事件 + 当前水位 lastSeq
+  // 缓冲缺失/落后时懒回填 session.history；会话不存在或 DSH 不可用静默返回空。
+  async function getEvents(sessionId, afterSeq = 0) {
+    const sid = String(sessionId || '').trim();
+    const after = Number(afterSeq) || 0;
+    if (!sid) return { items: [], lastSeq: after };
+    let arr = eventsBySession.get(sid) || [];
+    const last = arr.length ? arr[arr.length - 1].seq : -1;
+    const needFetch = arr.length === 0 || after > last;
+    const watermark = subscribedSeq.get(sid);
+    const nothingNew = watermark !== undefined && after >= watermark; // 水位确认没有更新事件
+    if (needFetch && !nothingNew && Date.now() - (lastHistoryFetch.get(sid) || 0) >= HISTORY_FETCH_COOLDOWN_MS) {
+      lastHistoryFetch.set(sid, Date.now());
+      try {
+        const value = await fetchRpc('session.history', { sessionId: sid });
+        const items = (value.events || [])
+          .map((ev) => eventToStreamItem(ev && ev.event))
+          .filter((i) => i && i.seq > after)
+          .slice(-MAX_EVENTS_PER_SESSION);
+        for (const it of items) pushEvent(sid, it);
+        arr = eventsBySession.get(sid) || [];
+      } catch { /* 会话不存在 / DSH 不可用 → 保持现状 */ }
+    }
+    return { items: arr.filter((i) => i.seq > after), lastSeq: arr.length ? arr[arr.length - 1].seq : after };
+  }
+
   function evictOldest() {
     while (pending.size > MAX_PENDING) {
       const oldest = pending.keys().next().value;
@@ -174,6 +300,17 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
   function ingest(frame) {
     if (!frame || typeof frame !== 'object') return;
     const p = frame.payload;
+    // 会话事件帧：缓存增量文本，供 /api/events 轮询
+    if (frame.method === 'session/event' && p && p.sessionId && p.event) {
+      const item = eventToStreamItem(p.event);
+      if (item) pushEvent(String(p.sessionId), item);
+      return;
+    }
+    // 连接时各会话水位：getEvents 判断是否需要回填 history
+    if (frame.method === 'session/subscribed' && p && p.sessionId) {
+      subscribedSeq.set(String(p.sessionId), Number(p.lastSeq) || 0);
+      return;
+    }
     const isApproval = frame.method === 'approval/requested' || (p && p.type === 'approval/requested');
     if (!isApproval) return;
     if (!p || typeof p !== 'object') return;
@@ -297,7 +434,7 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
 
   start(); // 创建即启动常驻连接（失败静默重试，不影响其他功能）
 
-  return { listPending, respond, start, stop };
+  return { listPending, respond, getEvents, start, stop };
 }
 
 // ---- 执行器入口：mode=both 时优先 Web API（复用会话），失败回退 headless ----
@@ -410,6 +547,78 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
       touch(sess.sessionId);
       if (webResult.ok || !webResult.stderr.includes('不可用')) return webResult;
       return runHeadless(task, onDelta);
+    },
+    // ---- DSH 只读同步 API（转发并归一化，供手机端浏览电脑上的项目/会话）----
+    // GET /api/dsh-workspaces：workspace.list + 按 cwd 前缀重新分组
+    // （workspace.sessionIds 可能不准——实测多数为空——故以 session.list 的 cwd 前缀为准，
+    //  与声明的 sessionIds 取并集计数；长路径优先匹配，避免嵌套工作区归属错误）
+    async listDshWorkspaces() {
+      const [wsValue, slValue] = await Promise.all([
+        fetchRpc('workspace.list', {}),
+        fetchRpc('session.list', {}),
+      ]);
+      const workspaces = (wsValue && wsValue.items) || [];
+      const sessions = (slValue && slValue.items) || [];
+      const matched = new Map(); // workspaceId -> Set<sessionId>
+      for (const w of workspaces) matched.set(w.workspaceId, new Set((w.sessionIds || []).filter(Boolean)));
+      const sorted = [...workspaces].sort((a, b) => normPath(b.path).length - normPath(a.path).length);
+      for (const s of sessions) {
+        const cwd = normPath(s.cwd);
+        if (!cwd) continue;
+        const ws = sorted.find((w) => {
+          const p = normPath(w.path);
+          return cwd === p || cwd.startsWith(p + '/');
+        });
+        if (ws) { const set = matched.get(ws.workspaceId); if (set) set.add(s.sessionId); }
+      }
+      return workspaces.map((w) => ({
+        workspaceId: w.workspaceId,
+        path: w.path,
+        title: w.title || null,
+        sessionCount: (matched.get(w.workspaceId) || new Set()).size,
+      }));
+    },
+    // GET /api/dsh-sessions：session.list 归一化（title 取自 projections，零额外 RPC）
+    async listDshSessions() {
+      const value = await fetchRpc('session.list', {});
+      return ((value && value.items) || []).map((s) => ({
+        sessionId: s.sessionId,
+        cwd: s.cwd,
+        title: (s.projections && s.projections.values && s.projections.values.title) || undefined,
+        updatedAt: isoTime(s.updatedAt),
+        running: !!s.running,
+        blank: !!s.blank,
+      }));
+    },
+    // POST /api/dsh-continue：对 DSH 已有会话继续发消息（不新建、不改注册表）。
+    // 复用 runWebApi 的"记录提交前进度 + 只统计本轮增量"逻辑；存在性用一次轻量 session.list 检查。
+    async continueSession({ sessionId, task, onDelta } = {}) {
+      const sid = String(sessionId || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      let known = false;
+      try {
+        const value = await fetchRpc('session.list', {});
+        known = ((value && value.items) || []).some((s) => s.sessionId === sid);
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'Web API 后端不可用: ' + String(e) };
+      }
+      if (!known) return { ok: false, code: 'session-not-found', error: '会话不存在: ' + sid };
+      const result = await runWebApi(task, onDelta, sid);
+      return { ok: true, sessionId: sid, result };
+    },
+    // GET /api/dsh-history?sessionId=：转发 session.history 归一化为对话消息
+    async getDshHistory(sessionId, limit) {
+      const sid = String(sessionId || '').trim();
+      if (!sid) throw new Error('sessionId 不能为空');
+      const value = await fetchRpc('session.history', { sessionId: sid });
+      let items = historyToMessages((value && value.events) || []);
+      const n = Number(limit);
+      if (Number.isInteger(n) && n > 0 && items.length > n) items = items.slice(-n);
+      return items;
+    },
+    // GET /api/events?sessionId=&afterSeq=：流式增量轮询（缓冲来自 events.mux 的 session/event 帧）
+    getEvents(sessionId, afterSeq) {
+      return this.relay.getEvents(sessionId, afterSeq);
     },
   };
 

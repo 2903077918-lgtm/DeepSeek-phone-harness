@@ -2,6 +2,13 @@
 // 行为与 v0.2.0 兼容：Bearer token、/api/status|exec|history、首页加载 web/index.html；
 // v0.3.0 新增 /api/sessions（GET 列表 / POST 新建）、/api/exec 支持可选 sessionId、/api/history 支持 sessionId 过滤
 // v0.4.0 新增 /api/approvals（GET 待审批列表 / POST 回传结果）：转发 DSH 审批请求（WebSocket 监听 + /api/respond）
+// v0.5.0 新增 DSH 同步/流式 API：
+//   GET  /api/dsh-workspaces    —— 转发 workspace.list + 按 cwd 前缀分组 → {ok, items:[{workspaceId,path,title,sessionCount}]}
+//   GET  /api/dsh-sessions      —— 转发 session.list（title 取自 projections）→ {ok, items:[{sessionId,cwd,title?,updatedAt,running,blank}]}
+//   POST /api/dsh-continue      —— {sessionId, task} 对 DSH 已有会话继续发消息（队列串行，不新建）→ {ok, sessionId, result}
+//   GET  /api/dsh-history?sessionId=[&limit=N] —— 转发 session.history → {ok, items:[{role:'user'|'assistant'|'tool',text,time}]}
+//   GET  /api/events?sessionId=&afterSeq=N    —— 流式增量轮询 → {ok, items:[{seq,type,text?,subtype?,time}], lastSeq}
+//   （事件缓冲由 executor 的 relay 扩展：同一 events.mux WS 连接同时收集 session/event 帧，每会话保留最近 200 条）
 import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
@@ -134,6 +141,77 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
           return;
         }
         sendJson(res, 200, { ok: true, accepted: true });
+        return;
+      }
+      // ---- DSH 项目/会话同步（只读转发，供手机端浏览电脑上的项目与会话）----
+      if (req.method === 'GET' && url.pathname === '/api/dsh-workspaces') {
+        if (!auth(req, res)) return;
+        if (typeof executor.listDshWorkspaces !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        try {
+          const items = await executor.listDshWorkspaces();
+          sendJson(res, 200, { ok: true, items });
+        } catch (e) {
+          sendJson(res, 502, { ok: false, error: 'DSH 同步失败（Web API 后端不可用?）: ' + String(e) });
+        }
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/dsh-sessions') {
+        if (!auth(req, res)) return;
+        if (typeof executor.listDshSessions !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        try {
+          const items = await executor.listDshSessions();
+          sendJson(res, 200, { ok: true, items });
+        } catch (e) {
+          sendJson(res, 502, { ok: false, error: 'DSH 同步失败（Web API 后端不可用?）: ' + String(e) });
+        }
+        return;
+      }
+      // ---- 继续电脑会话 + 读会话历史 ----
+      if (req.method === 'POST' && url.pathname === '/api/dsh-continue') {
+        if (!auth(req, res)) return;
+        const body = await readBody(req);
+        const sessionId = String(body.sessionId || '').trim();
+        const task = String(body.task || '').trim();
+        if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
+        if (!task) { sendJson(res, 400, { ok: false, error: 'task 不能为空' }); return; }
+        if (typeof executor.continueSession !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        // 与 /api/exec 共用队列：同一时间只跑一个任务（DSH 会话单写）
+        await queue.enqueue(async () => executor.continueSession({ sessionId, task }))
+          .then((out) => {
+            if (!out.ok) {
+              const code = out.code === 'session-not-found' ? 404 : (out.code === 'bad-request' ? 400 : 502);
+              sendJson(res, code, { ok: false, error: out.error });
+              return;
+            }
+            sendJson(res, 200, { ok: true, sessionId: out.sessionId, result: out.result });
+          })
+          .catch((e) => {
+            sendJson(res, 500, { ok: false, error: String(e) });
+          });
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/dsh-history') {
+        if (!auth(req, res)) return;
+        const sessionId = (url.searchParams.get('sessionId') || '').trim();
+        if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
+        if (typeof executor.getDshHistory !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        try {
+          const limit = Number(url.searchParams.get('limit') || '');
+          const items = await executor.getDshHistory(sessionId, Number.isFinite(limit) ? limit : undefined);
+          sendJson(res, 200, { ok: true, items });
+        } catch (e) {
+          sendJson(res, 502, { ok: false, error: 'DSH 历史读取失败: ' + String(e) });
+        }
+        return;
+      }
+      // ---- 流式增量轮询（打字机数据源：缓冲来自 events.mux 的 session/event 帧）----
+      if (req.method === 'GET' && url.pathname === '/api/events') {
+        if (!auth(req, res)) return;
+        const sessionId = (url.searchParams.get('sessionId') || '').trim();
+        if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
+        const afterSeq = Number(url.searchParams.get('afterSeq') || '0');
+        const out = await executor.getEvents(sessionId, Number.isFinite(afterSeq) ? afterSeq : 0);
+        sendJson(res, 200, { ok: true, ...out });
         return;
       }
       res.writeHead(404, { 'content-type': 'application/json' });
