@@ -7,6 +7,17 @@ export async function getDeviceByAgentId(db: SupabaseClient, agentId: string): P
   return db.selectOne<Device>('devices', { agent_id: `eq.${agentId}` });
 }
 
+// 把"agent_id 或设备 UUID"统一解析成 devices.id（UUID）。传入已是 UUID 则原样返回；
+// 否则按 agent_id 查表。供所有写 uuid 外键（pair_codes/audit_log/tasks）的方法使用。
+export async function resolveDeviceUuid(db: SupabaseClient, idOrAgentId: string): Promise<string | null> {
+  const v = String(idOrAgentId || '').trim();
+  if (!v) return null;
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRe.test(v)) return v; // 已是 UUID
+  const dev = await getDeviceByAgentId(db, v);
+  return dev ? dev.id : null;
+}
+
 /** 设备注册 / 上报（Agent hello 时 upsert：存在则更新状态/公钥，不存在则插入 unbound） */
 export async function upsertDevice(
   db: SupabaseClient,
@@ -57,9 +68,10 @@ export async function createTask(
     timeoutMs?: number;
   },
 ): Promise<Task> {
+  const deviceUuid = fields.deviceId ? await resolveDeviceUuid(db, fields.deviceId) : null;
   return db.insert<Task>('tasks', {
     user_id: fields.userId ?? null,
-    device_id: fields.deviceId ?? null,
+    device_id: deviceUuid,
     status: 'queued',
     prompt_cipher: fields.promptCipher,
     risk_level: fields.riskLevel ?? 'low',
@@ -102,14 +114,15 @@ export async function appendTaskEvent(db: SupabaseClient, taskId: string, type: 
   await db.insert('task_events', { task_id: taskId, type, payload, at: new Date().toISOString() });
 }
 
-/** 追加审计日志 */
+/** 追加审计日志（deviceId 支持 agent_id 或 UUID，内部解析成设备的 UUID） */
 export async function appendAudit(
   db: SupabaseClient,
   fields: { userId?: string; deviceId?: string; action: string; detail?: Record<string, unknown> },
 ): Promise<void> {
+  const devUuid = fields.deviceId ? await resolveDeviceUuid(db, fields.deviceId) : null;
   await db.insert('audit_log', {
     user_id: fields.userId ?? null,
-    device_id: fields.deviceId ?? null,
+    device_id: devUuid,
     action: fields.action,
     detail: fields.detail ?? null,
     at: new Date().toISOString(),
@@ -218,26 +231,29 @@ export async function generatePairCode(): Promise<{ code: string; codeHash: stri
   return { code, codeHash: await sha256Hex(code) };
 }
 
-/** 存配对准（只存 code_hash） */
-export async function createPairCode(db: SupabaseClient, deviceId: string, codeHash: string): Promise<void> {
+/** 存配对准（只存 code_hash；deviceId 为 agent_id，内部解析成 devices.id UUID） */
+export async function createPairCode(db: SupabaseClient, agentId: string, codeHash: string): Promise<void> {
+  const dev = await getDeviceByAgentId(db, agentId);
+  if (!dev) throw new Error('设备不存在: ' + agentId);
   await db.insert('pair_codes', {
-    code_hash: codeHash, device_id: deviceId,
+    code_hash: codeHash, device_id: dev.id,
     expires_at: new Date(Date.now() + PAIR_CODE_TTL_MS).toISOString(),
   });
 }
 
 /** 用配对码把设备绑定到用户：码校验（存在/未用/未过期）→ 绑定 + 标记 used */
-export async function pairDeviceWithCode(db: SupabaseClient, deviceId: string, code: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+export async function pairDeviceWithCode(db: SupabaseClient, agentId: string, code: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+  const dev = await getDeviceByAgentId(db, agentId);
+  if (!dev) return { ok: false, error: '设备不存在' };
   const codeHash = await sha256Hex((code || '').trim().toUpperCase());
   const row = await db.selectOne<PairCodeRow>('pair_codes', { code_hash: `eq.${codeHash}` });
   if (!row) return { ok: false, error: '配对码不存在' };
   if (row.used_at) return { ok: false, error: '配对码已被使用' };
   if (new Date(row.expires_at).getTime() < Date.now()) return { ok: false, error: '配对码已过期' };
-  if (row.device_id !== deviceId) return { ok: false, error: '配对码与设备不匹配' };
+  if (row.device_id !== dev.id) return { ok: false, error: '配对码与设备不匹配' };
   await db.update('pair_codes', row.id, { used_at: new Date().toISOString(), used_by_user: userId });
   // 绑定设备 → user
-  const dev = await getDeviceByAgentId(db, deviceId);
-  if (dev) await db.update<Device>('devices', dev.id, { user_id: userId, status: 'online', bound_at: new Date().toISOString() });
+  await db.update<Device>('devices', dev.id, { user_id: userId, status: 'online', bound_at: new Date().toISOString() });
   return { ok: true };
 }
 
@@ -248,7 +264,11 @@ export async function listTasks(
   opts: { deviceId?: string; userId?: string; status?: string; limit?: number },
 ): Promise<Task[]> {
   const q: Record<string, string> = {};
-  if (opts.deviceId) q.device_id = `eq.${opts.deviceId}`;
+  if (opts.deviceId) {
+    const uuid = await resolveDeviceUuid(db, opts.deviceId); // agent_id 转 UUID 以匹配 tasks.device_id
+    if (uuid) q.device_id = `eq.${uuid}`;
+    else return [];
+  }
   if (opts.userId) q.user_id = `eq.${opts.userId}`;
   if (opts.status) q.status = `eq.${opts.status}`;
   q.order = 'created_at.desc';

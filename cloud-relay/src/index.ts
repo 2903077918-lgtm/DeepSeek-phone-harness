@@ -63,16 +63,20 @@ export default {
 
     // ---- 设备注册（Agent hello 走这里：upsert + 生成配对码）----
     if (method === 'POST' && pathname === '/v1/devices/register') {
-      const body = await readJson(request);
-      const agentId = String(body.agentId || '');
-      if (!agentId) return json({ error: 'agentId 必填' }, 400);
-      await upsertDevice(db, agentId, {
-        name: body.name, os: body.os, arch: body.arch, version: body.version, publicKeyX25519: body.publicKey,
-      });
-      const { code, codeHash } = await generatePairCode();
-      await createPairCode(db, agentId, codeHash);
-      await appendAudit(db, { deviceId: agentId, action: 'device.register' });
-      return json({ ok: true, deviceId: agentId, pairCode: code }); // 明文配对码只此一次返回给 Agent
+      try {
+        const body = await readJson(request);
+        const agentId = String(body.agentId || '');
+        if (!agentId) return json({ error: 'agentId 必填' }, 400);
+        await upsertDevice(db, agentId, {
+          name: body.name, os: body.os, arch: body.arch, version: body.version, publicKeyX25519: body.publicKey,
+        });
+        const { code, codeHash } = await generatePairCode();
+        await createPairCode(db, agentId, codeHash);
+        await appendAudit(db, { deviceId: agentId, action: 'device.register' });
+        return json({ ok: true, deviceId: agentId, pairCode: code }); // 明文配对码只此一次返回给 Agent
+      } catch (e) {
+        return json({ ok: false, error: '设备注册失败: ' + String(e) }, 500);
+      }
     }
 
     // ---- 设备配对（手机绑定 user↔device）----
@@ -192,5 +196,13 @@ function json(data: unknown, status = 200): Response {
 }
 
 async function readJson(request: Request): Promise<Record<string, any>> {
-  try { return (await request.json()) as Record<string, any>; } catch { return {}; }
+  let text = '';
+  try { text = await request.text(); } catch { /* body 不可读 */ }
+  if (!text || !text.trim()) return {};
+  try {
+    const v = JSON.parse(text);
+    return (v && typeof v === 'object') ? v : { raw: text };
+  } catch {
+    return { raw: text };
+  }
 }
