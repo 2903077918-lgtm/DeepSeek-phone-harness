@@ -166,35 +166,34 @@ function eventToStreamItem(ev) {
   const data = ev.data || {};
   let text;
   let subtype = null;
+  let kind = 'other'; // 标准化类型：text(可见文本) | thinking(推理) | tool(工具) | done(完成) | other
   if (type === 'assistant/chunk') {
     const chunk = data.chunk;
     if (chunk && typeof chunk === 'object') {
       // DSH chunk 变体：text-delta（可见增量）/ reasoning-delta（推理）/ tool-call-delta / block-start / block-end
       const ctype = chunk.type;
       if (ctype === 'text-delta' && typeof chunk.text === 'string') {
-        text = chunk.text;
-        subtype = 'text';
+        text = chunk.text; subtype = 'text'; kind = 'text';
       } else if (ctype === 'reasoning-delta' && typeof chunk.text === 'string') {
-        text = chunk.text;
-        subtype = 'reasoning';
+        text = chunk.text; subtype = 'reasoning'; kind = 'thinking';
       } else if (ctype === 'tool-call-delta' && typeof chunk.name === 'string') {
-        text = chunk.name;
-        subtype = 'tool';
+        text = chunk.name; subtype = 'tool'; kind = 'tool';
       } else if (ctype === 'block-start') {
-        subtype = 'block-start';
-        text = '';
+        subtype = 'block-start'; text = ''; kind = 'other';
       }
     }
   } else if (type === 'assistant/message' || type === 'user/message') {
     const content = type === 'assistant/message' ? (data.message && data.message.content) : data.content;
     if (Array.isArray(content)) {
       const t = content.filter((c) => c && c.type === 'text').map((c) => c.text || '').join('');
-      if (t) text = t;
+      if (t) { text = t; kind = 'text'; }
     }
   } else if (type === 'tool/call') {
-    if (data.name) text = String(data.name);
+    if (data.name) { text = String(data.name); kind = 'tool'; }
+  } else if (type === 'turn/end') {
+    kind = 'done';
   }
-  const item = { seq: Number(ev.seq) || 0, type, time: isoTime(ev.time) };
+  const item = { seq: Number(ev.seq) || 0, type, kind, time: isoTime(ev.time) };
   if (text !== undefined) item.text = text;
   if (subtype) item.subtype = subtype;
   return item;
