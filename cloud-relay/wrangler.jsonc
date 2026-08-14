@@ -20,10 +20,6 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["RelayDO"] }
   ],
-  "assets": {
-    "directory": ".assets",
-    "not_found_handling": "single-page-application"
-  },
   "triggers": {
     "crons": []
   }

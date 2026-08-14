@@ -4,7 +4,7 @@ import type { Device, DeviceStatus, Task, TaskStatus } from './types.js';
 
 /** 通过 Agent 的 agent_id(=deviceId) 查设备（含未绑定） */
 export async function getDeviceByAgentId(db: SupabaseClient, agentId: string): Promise<Device | null> {
-  return db.selectOne<Device>('devices', { agent_id: `eq.${encodeURIComponent(agentId)}` });
+  return db.selectOne<Device>('devices', { agent_id: `eq.${agentId}` });
 }
 
 /** 设备注册 / 上报（Agent hello 时 upsert：存在则更新状态/公钥，不存在则插入 unbound） */
@@ -151,11 +151,11 @@ export async function verifyPassword(password: string, stored: string): Promise<
     // pbkdf2$iter$salt$1$hash
     if (parts[0] !== 'pbkdf2') return false;
     const iter = Number(parts[1]);
-    const salt = parts[2];
+    const saltBytes = fromHex(parts[2] ?? ''); // hashPassword 存的是 hex(salt)，需解码回字节
     const expected = fromHex(parts[4] ?? '');
     const key = await crypto.subtle.importKey('raw', toBuf(password), 'PBKDF2', false, ['deriveBits']);
     const bits = await crypto.subtle.deriveBits(
-      { name: 'PBKDF2', salt: toBuf(salt), iterations: iter, hash: 'SHA-256' },
+      { name: 'PBKDF2', salt: saltBytes, iterations: iter, hash: 'SHA-256' },
       key, PBKDF2_KEYLEN * 8,
     );
     const got = fromHex(hex(bits));
@@ -181,7 +181,7 @@ export interface UserRow {
 
 /** 注册账号（邮箱存在则抛错） */
 export async function createUser(db: SupabaseClient, email: string, password: string): Promise<UserRow> {
-  const existing = await db.selectOne<UserRow>('users', { email: `eq.${encodeURIComponent(email)}` });
+  const existing = await db.selectOne<UserRow>('users', { email: `eq.${email}` });
   if (existing) throw new Error('email taken');
   const passwordHash = await hashPassword(password);
   return db.insert<UserRow>('users', {
@@ -191,7 +191,7 @@ export async function createUser(db: SupabaseClient, email: string, password: st
 
 /** 按邮箱查用户；校验密码，成功返回 user（不含 password_hash） */
 export async function loginUser(db: SupabaseClient, email: string, password: string): Promise<Omit<UserRow, 'password_hash'> | null> {
-  const u = await db.selectOne<UserRow>('users', { email: `eq.${encodeURIComponent(email)}` });
+  const u = await db.selectOne<UserRow>('users', { email: `eq.${email}` });
   if (!u || !(await verifyPassword(password, u.password_hash))) return null;
   const { password_hash: _ph, ...rest } = u;
   return rest;
@@ -248,9 +248,9 @@ export async function listTasks(
   opts: { deviceId?: string; userId?: string; status?: string; limit?: number },
 ): Promise<Task[]> {
   const q: Record<string, string> = {};
-  if (opts.deviceId) q.device_id = `eq.${encodeURIComponent(opts.deviceId)}`;
-  if (opts.userId) q.user_id = `eq.${encodeURIComponent(opts.userId)}`;
-  if (opts.status) q.status = `eq.${encodeURIComponent(opts.status)}`;
+  if (opts.deviceId) q.device_id = `eq.${opts.deviceId}`;
+  if (opts.userId) q.user_id = `eq.${opts.userId}`;
+  if (opts.status) q.status = `eq.${opts.status}`;
   q.order = 'created_at.desc';
   q.limit = String(opts.limit ?? 50);
   return db.selectAll<Task>('tasks', q);
@@ -258,13 +258,13 @@ export async function listTasks(
 
 /** 任务详情 */
 export async function getTaskById(db: SupabaseClient, taskId: string): Promise<Task | null> {
-  return db.selectOne<Task>('tasks', { id: `eq.${encodeURIComponent(taskId)}` });
+  return db.selectOne<Task>('tasks', { id: `eq.${taskId}` });
 }
 
 /** 任务事件回放 */
 export async function listTaskEvents(db: SupabaseClient, taskId: string): Promise<Array<{ type: string; payload: unknown; at: string }>> {
   return db.selectAll<{ type: string; payload: unknown; at: string }>('task_events', {
-    task_id: `eq.${encodeURIComponent(taskId)}`, order: 'id.asc', limit: '200',
+    task_id: `eq.${taskId}`, order: 'id.asc', limit: '200',
   });
 }
 
