@@ -1,5 +1,6 @@
 // src/transport-lan.js —— 局域网 HTTP 传输层（8788）
-// 行为与 v0.2.0 完全一致：Bearer token、/api/status|exec|history、首页加载 web/index.html
+// 行为与 v0.2.0 兼容：Bearer token、/api/status|exec|history、首页加载 web/index.html；
+// v0.3.0 新增 /api/sessions（GET 列表 / POST 新建）、/api/exec 支持可选 sessionId、/api/history 支持 sessionId 过滤
 import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
@@ -49,7 +50,17 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
       }
       if (req.method === 'GET' && url.pathname === '/api/history') {
         if (!auth(req, res)) return;
-        sendJson(res, 200, { ok: true, items: history.list() });
+        // 可选 sessionId 过滤：GET /api/history?sessionId=xxx 只返回该会话的任务记录（无过滤时返回全部）
+        const sessionId = (url.searchParams.get('sessionId') || '').trim() || undefined;
+        const all = history.list();
+        const items = sessionId ? all.filter((e) => e.sessionId === sessionId) : all;
+        sendJson(res, 200, { ok: true, items });
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/sessions') {
+        if (!auth(req, res)) return;
+        const items = typeof executor.listSessions === 'function' ? executor.listSessions() : [];
+        sendJson(res, 200, { ok: true, items });
         return;
       }
       if (req.method === 'POST' && url.pathname === '/api/exec') {
@@ -57,15 +68,33 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         const body = await readBody(req);
         const task = String(body.task || '').trim();
         if (!task) { sendJson(res, 400, { ok: false, error: 'task 不能为空' }); return; }
+        // 可选 sessionId：传入则复用该会话（保持上下文），否则走默认逻辑（both 模式复用最近会话）
+        const sessionId = body.sessionId ? String(body.sessionId).trim() : undefined;
+        const runOpts = sessionId ? { sessionId } : {};
         await queue.enqueue(async () => {
-          const result = await executor.run(task);
+          const result = await executor.run(task, runOpts);
+          // result 里带 sessionId（webapi 后端）时随 spread 一并入库，供 /api/history?sessionId= 过滤；
+          // headless 结果无 sessionId，条目不带该字段（符合要求 3）
           history.append({ id: crypto.randomUUID(), task, ...result, at: new Date().toISOString() });
           return result;
         }).then((result) => {
-          sendJson(res, 200, { ok: true, result });
+          // sessionId 为 undefined 时 JSON.stringify 自动省略该字段，向后兼容旧客户端
+          sendJson(res, 200, { ok: true, sessionId: result.sessionId, result });
         }).catch((e) => {
           sendJson(res, 500, { ok: false, error: String(e) });
         });
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/sessions') {
+        if (!auth(req, res)) return;
+        try {
+          const sess = typeof executor.createSession === 'function'
+            ? await executor.createSession()
+            : await executor.ensureSession();
+          sendJson(res, 200, { ok: true, sessionId: sess.sessionId });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: '新建会话失败（Web API 后端不可用?）: ' + String(e) });
+        }
         return;
       }
       res.writeHead(404, { 'content-type': 'application/json' });
