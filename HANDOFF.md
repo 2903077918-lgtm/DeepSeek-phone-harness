@@ -7,12 +7,11 @@
 
 ## 〇、恢复点（压缩后从这里继续）
 
-**当前进行中的任务**：v2 升级（iOS 三层导航 + 流式 + 继续电脑会话）
-- Agent G（后端 API）、Agent H（UI v2）**在后台运行中**，产出直接写文件
-- **压缩后第一步**：检查 `git status` / `git log` 看 Agent G/H 是否已提交产出；读 `web/index.html` 和 `src/executor.js` 确认实现状态
-- **第一个未完成点**：v2 集成验证（手机实测继续会话 + 流式 + 导航）→ 提交 git → 汇报
-
-**上次完成**：审批功能（git 05b1533）+ 交接文档（100eee5）
+**当前状态**：v2 升级已全部提交；UI 视觉升级接线刚完成（git c46b99e）
+- v2（三层导航+流式+继续电脑会话）、中断任务、Agent 活动页、PWA 黑金图标、工作区去重均已完成并提交
+- **上次完成**：UI 视觉升级接线（助手头像 asst-avatar + 空态引导 empty-state + 用户气泡，git c46b99e，附设计资产 fa0c726/cc9cd62）
+- **下一步候选**：阶段3 云端中转（WSS+E2EE+配对，见 docs/architecture/cloud-architecture.md）；手机实测最终验收
+- **环境备注**：DSH web（127.0.0.1:3080）队列繁忙时（多个会话 running）exec 会排队超时——非 relay 故障，等队列清空即可
 
 ---
 
@@ -22,33 +21,42 @@
 目标：抢在 DeepSeek 官方之前做出来，iOS/Android 上架，开源引流 + 收费。
 架构：手机 App/网页 → （未来云端）→ 电脑端 Agent → DSH headless/Web API 执行。
 
-## 二、当前进度（git 7 个提交）
+## 二、当前进度（git 13 个提交）
 
 ```
-05b1533 审批relay收尾（清SSE死代码+修复重连退避）
+cc9cd62 chore: 补充UI检查脚本与设计稿截图(design辅助资产)
+fa0c726 chore: 记录运行时测试数据 + 补充PWA图标产物
+c46b99e UI视觉升级接线: 助手头像+空态引导+用户气泡(完成WIP CSS→JS)
+3f5a2ba P0修复: 工作区去重+路径简化+SVG图标替换emoji+加载动画
+43def9c PWA黑金版图标
+50a6e59 任务可视化: /api/agents(子代理列表) + 前端Agent活动页
+09d365b 中断任务: /api/cancel转发DSH session.cancel
+04e6598 v2升级: iOS三层导航UI + 后端同步/继续会话/流式API
+05b1533 审批relay收尾
 23bdb60 审批功能（WS转发+API+UI卡片）
-07c9018 修正UI过时文案
 0fd11f5 阶段2第二步（深色对话UI+会话连续性）
 fc753b2 阶段2第一步（模块化拆分+双执行后端）
 5c9f15e 基线 v0.2.0
 ```
 
-**已完成的 MVP + 阶段2**：
+**已完成的 MVP + 阶段2 + v2**：
 - ✅ 电脑端 Agent（Node.js，8788，Bearer token）模块化：`src/{config,history,queue,executor,transport-lan}.js`
 - ✅ 双执行后端：headless（lan）+ DSH Web API（both，127.0.0.1:3080，更快 3-8s）
 - ✅ 会话连续性：DSH 会话复用（sessions.json 注册表），手机"继续对话"上下文记忆
-- ✅ DeepSeek 风格深色对话流 UI（web/index.html，58KB）
+- ✅ DeepSeek 风格深色对话流 UI（web/index.html，~270KB）
+- ✅ v2：iOS 三层导航（项目→会话→对话）、流式打字机（/api/events kind 枚举）、继续电脑会话（/api/dsh-continue）
+- ✅ 中断任务：/api/cancel 转发 DSH session.cancel
+- ✅ 任务可视化：/api/agents（子代理列表）+ 前端 Agent 活动页
 - ✅ 审批转发：WebSocket 连 DSH events.mux，/api/approvals，UI 审批卡片
-- ✅ 会话 API：/api/sessions（GET/POST）、/api/history（?sessionId= 过滤）
-- ✅ 治理基线 + 云端架构文档
-
-**进行中（v2，Agent G/H 并行）**：
-- Agent G（后端）：dsh-workspaces / dsh-sessions / dsh-continue / dsh-history / events 增量流式 API
-- Agent H（UI）：iOS 三层导航（项目→会话→对话）+ 流式打字机 + 毛玻璃视觉
+- ✅ 会话 API：/api/sessions（GET/POST）、/api/history（?sessionId= 过滤）、/api/dsh-workspaces、/api/dsh-sessions（withCount/ungrouped）
+- ✅ PWA：黑金版图标（鲸鱼+金边）+ manifest + 无缓存（Cache-Control no-store）
+- ✅ UI 视觉升级接线：助手头像（asst-avatar）+ 空态引导（empty-state）+ 用户气泡蓝紫渐变
+- ✅ 治理基线 + 云端架构文档 + DSH 反馈报告
 
 **待做**：
 - 阶段3：云端中转（WSS+E2EE+配对，见 docs/architecture/cloud-architecture.md）
 - 阶段4：App 上架、支付、多租户
+- 产品化调优：审批权限预设（当前 workspace-write 下触发少）、超大 DSH 会话 history limit、通知推送
 
 ## 三、关键技术结论（实测）
 
@@ -83,11 +91,13 @@ phone-harness/
 ├── src/config.js          # 常量/API key
 ├── src/history.js         # 历史
 ├── src/queue.js           # FIFO 队列
-├── src/executor.js        # 执行器+会话注册+审批relay
-├── src/transport-lan.js   # 8788 HTTP
-├── web/index.html         # 手机控制台 UI
+├── src/executor.js        # 执行器+会话注册+审批relay+dsh同步API
+├── src/transport-lan.js   # 8788 HTTP（含 /api/dsh-*、/api/cancel、/api/agents）
+├── web/index.html         # 手机控制台 UI（v2 三层导航 + 流式 + 头像/空态）
+├── design/                # PWA 图标源文件 + 设计稿截图 + UI 检查脚本
 ├── docs/architecture/cloud-architecture.md  # 云端设计
 ├── docs/deepseekharness-relay-方案.md        # 产品方案
+├── docs/API文档.md         # 全部端点 + kind 枚举
 ├── PROJECT_STATE.md       # 协作基线
-└── test-*.mjs             # 集成测试
+└── test-*.mjs / verify-v2.mjs  # 集成验证
 ```
