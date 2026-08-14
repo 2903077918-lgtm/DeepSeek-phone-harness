@@ -51,9 +51,9 @@ function mockExecutor() {
   const phone = await generateKeyPair();   // 手机 P-256 密钥对
   const agent = await generateKeyPair();   // Agent P-256 密钥对（本机持有私钥）
   const salt = generateKeySalt();
-  // 手机端派生密钥并加密任务，携带 senderKey(手机公钥)+salt
+  // 手机端派生密钥并加密任务，携带 senderKey(手机公钥)+salt；prompt AAD 固定 'ph-task'(与 Agent 约定一致)
   const phoneKey = await deriveSessionKey(phone.privateKey, agent.publicKey, salt);
-  const aad = 'tsk_e2e';
+  const aad = 'ph-task';
   const promptCipher = await encrypt(phoneKey, '删除临时文件', aad);
 
   const t = mockTransport(); const ex = mockExecutor();
@@ -70,7 +70,7 @@ function mockExecutor() {
   // 结果是否加密：Agent 用同一任务密钥加密 result_cipher，手机应能解密
   const res = t.sent.find((s) => s.type === MSG_TYPES.TASK_RESULT);
   const agentKey = await deriveSessionKey(agent.privateKey, phone.publicKey, salt);
-  const dec = res && res.payload.result_cipher ? await decrypt(agentKey, res.payload.result_cipher, aad) : null;
+  const dec = res && res.payload.result_cipher ? await decrypt(agentKey, res.payload.result_cipher, 'tsk_e2e') : null; // 结果 AAD=taskId
   const decText = dec ? new TextDecoder().decode(dec) : '';
   check('结果被加密且手机可解', !!dec && decText.includes('执行:删除临时文件'), decText);
 }
