@@ -1,0 +1,92 @@
+# DeepSeek Harness（DSH）使用体验与 Bug 反馈
+
+- 反馈人：Joey（DSH 深度用户，`dsh` CLI 0.1.0-rc.6，Node v24.18.0，Windows 11）
+- 日期：2026-08-14
+- 场景：长期使用 DSH Web GUI 开发 `deepseekharness-relay` 项目（手机远程控制 DSH 的产品），并深度调用 DSH 的 HTTP API（127.0.0.1:3080）与 headless 模式
+- 目的：反馈真实使用中遇到的问题，供团队改进
+
+---
+
+## 一、明确 Bug（可复现）
+
+### BUG-1：`/api/events.mux` 用 fetch 请求返回 426 "upgrade required"，但协议实际是 WebSocket，且无文档说明
+
+- **现象**：用 `fetch('http://127.0.0.1:3080/api/events.mux')`（普通 GET + `Accept: text/event-stream`）返回 `426 upgrade required`；换 `new WebSocket('ws://127.0.0.1:3080/api/events.mux')` 则正常连接并收到帧。
+- **影响**：开发者无法从行为判断该端点要求 WebSocket；426 响应体只有 "upgrade required"，没有提示应改用 WebSocket。
+- **期望**：① 文档标注 mux/host 端点是 WebSocket 而非 SSE；② 或 426 响应体给出指引（如 "use WebSocket: ws://…"）；③ 或支持 SSE 作为降级传输。
+
+### BUG-2：`workspace.sessionIds` 不动态收录运行时新建的会话，导致 GUI 侧边栏出现大量"未分组"会话
+
+- **现象**：运行中通过 `session.create`（或子 Agent）新建会话后，这些会话有正确的 `cwd`（如 `C:\Users\Joey\Documents\Codex`），但 `workspace.list` 里对应工作区的 `sessionIds` 不包含它们，GUI 侧边栏把它们显示在 "Ungrouped（未分组）" 下。
+- **复现**：① 启动 web → ② 调 `/api/session.create {cwd: "C:\\Users\\Joey\\Documents\\Codex"}` → ③ `workspace.list` 看 Codex 工作区 sessionIds 未增加；重启 web 后 bootstrap 重新扫描才归位（但实测重启后部分工作区仍显示 0 会话，见 BUG-3）。
+- **影响**：多会话/多 Agent 场景下侧边栏混乱，会话归属感差。
+- **期望**：workspace 的 sessionIds 应随 `session/create` 动态更新，或在 `workspace.list` 时按 cwd 实时分组（而非依赖启动时快照）。
+
+### BUG-3：工作区与会话的 cwd 分组不一致（同一项目路径出现多个工作区、会话数对不上）
+
+- **现象**：`workspace.list` 返回 12 个工作区，其中 `voltex-ai-platform` 出现 3 次（路径分别为 `C:\Users\Joey\voltex-ai-platform\voltex-ai-platform`、`C:\Users\Joey\Documents\帮企业定制agent自动化工作流方案\voltex-ai-platform`、…\voltex-ai-platform\voltex-ai-platform）；而 `session.list` 有 130 个会话，多数工作区显示 `sessionIds: 0`，但按 cwd 前缀统计明明有会话。
+- **期望**：同一 canonical 项目路径只对应一个工作区；`sessionIds` 与按 cwd 分组的实际会话一致。
+
+### BUG-4：headless 模式不继承用户级环境变量，`DEEPSEEK_API_KEY` 缺失
+
+- **现象**：`DEEPSEEK_API_KEY` 存在于 Windows 用户环境变量（HKCU\Environment）且 web 模式正常，但 `dsh --profile headless "任务"` 报 `MISSING_CREDENTIAL: llm-deepseek: no API key`。
+- **原因**：headless 子进程未加载用户级环境变量（启动它的进程环境无该 key）。我们最终用 Node `execFileSync('reg', ['query', 'HKCU\\Environment', …])` 读取注册表绕过。
+- **期望**：headless 模式应与 web 模式一致地解析用户级凭据（读取注册表/User 环境），或错误信息提示从哪里获取 key。
+
+---
+
+## 二、体验问题 / 设计建议
+
+### EXP-1：上下文压缩是"总结式"而非"裁剪式"，压缩后丢失对话细节
+
+- **对比**：Codex 的 `compacted` 事件携带 `replacement_history`（压缩后保留**原始用户/助手消息数组**，只裁剪中间工具调用，`message` 摘要字段为空）；DSH 的 `compaction/summary` 是**一段 LLM 生成的摘要**替换旧范围，原始消息不再进入模型 surface。
+- **影响**：长会话被自动压缩后，Agent 只能看到"大意"，丢失具体数字、路径、用户原话等细节，导致"感觉忘事了"。我们实测当前会话已有 67 个 compaction 事件（自动压缩频繁触发）。
+- **建议**：① 压缩策略改为"裁剪保留原文"（类似 Codex）；② 或至少把被压缩范围的原始消息以可检索形式保留（如 `session.history` 能按 seq 查被 shadowed 的消息）；③ 压缩时在摘要中强制包含关键事实（路径、数字、用户指令原文）。
+
+### EXP-2：会话列表的标题在冷会话（未打开过）上缺失，显示为空
+
+- **现象**：`session.list` 返回冷会话（持久化但未实例化）时无 `title`，GUI 列表显示空白/占位，需打开会话后才有标题（从 `session/title` 事件投影）。
+- **期望**：`session.list` 对冷会话也返回标题（从日志第一条 user 消息或 `session/title` 事件读取），避免列表空标题。
+
+### EXP-3：审批功能与权限预设的配合不直观
+
+- **现象**：在默认权限（workspace-write）下，`session.prompt` 执行越权操作（如读取工作区外文件）时**不触发** `approval/requested` 事件（实测 20s 无审批帧），审批流形同虚设；只有把权限调严（read-only 等）才会触发，但会牺牲正常工作流自由度。
+- **期望**：文档明确"什么权限预设下哪些操作触发审批"；或提供按工具/路径粒度的审批策略配置，而不是靠权限预设整体切换。
+
+### EXP-4：`/api/respond` 的成功判定缺少明确错误码
+
+- **现象**：`/api/respond` 对未知 approvalId 返回 HTTP 200 + `{accepted: false, reason: 'not-pending'}`，对非 JSON 响应也按成功处理——外部集成者难以区分"已处理/未处理/失败"。
+- **期望**：对错误场景返回明确的 HTTP 状态码（404/409/400）或结构化错误，便于程序化集成。
+
+### EXP-5：工作区路径规范化（canonical）行为不透明
+
+- **现象**：`workspace.create` 会用 `realpathNormalize` 规范化路径，但部分会话 header 的 cwd 保留了 `C:\Users\Joey\voltex-ai-platform`（未规范化）与规范后的路径不一致，导致分组错乱。
+- **期望**：会话 cwd 与 workspace path 使用同一规范化规则，或文档说明二者关系。
+
+### EXP-6：API 文档/自描述不足
+
+- **现象**：HTTP API（`/api/session.*`、`/api/workspace.*`、`/api/events.mux` 等）没有公开的 OpenAPI/自描述端点，协议细节（帧格式、WebSocket vs SSE、approval 回传格式）只能靠读源码或抓包发现。
+- **期望**：提供 API 文档（OpenAPI 或 markdown），至少覆盖事件流、审批、会话生命周期。
+
+---
+
+## 三、做得好的地方（肯定）
+
+1. **事件源会话模型**：会话事件可追加、可重放（`session.history` 返回完整事件），非常适合做外部集成（我们据此实现了手机远程控制）。
+2. **headless 模式**：`dsh --profile headless "任务"` 一行命令即可程序化执行，是远程控制/自动化的重要入口。
+3. **会话持久化格式**：zstd 多帧 JSONL 设计清晰，崩溃恢复逻辑严谨（帧校验、seq 连续性、torn-frame 修复）。
+4. **审批事件流协议**：`approval/requested` + `/api/respond` 设计合理（rpcId 关联 pending 表），一旦权限配置到位即可工作。
+5. **GUI 深色主题与工作流注入**：AGENTS.md 动态加载（user-global + 工作区）体验好，规则热更新即时生效。
+
+---
+
+## 附：复现环境
+
+- `dsh` CLI：0.1.0-rc.6（`@deepseek-ai/dsh`，npm 全局安装）
+- Node：v24.18.0（Windows 11）
+- 调用方式：Web GUI（`dsh web`）+ 直接 HTTP 调用 `http://127.0.0.1:3080/api/*` + `dsh --profile headless`
+- 相关目录：`C:\Users\Joey\.dsh`（DSH_HOME）、`C:\Users\Joey\Documents\phone-harness`（集成项目）
+
+---
+
+*本报告基于真实使用与实测（含抓包、源码阅读、API 调用验证），供团队参考。*
