@@ -114,7 +114,10 @@ export default {
       if (!agentId) return json({ error: 'missing agentId' }, 400);
       const dev = await getDeviceByAgentId(db, agentId);
       return dev
-        ? json({ ok: true, device: { agentId, status: dev.status, bound: !!dev.user_id, lastSeen: dev.last_seen_at, killUntil: dev.kill_until } })
+        ? json({ ok: true, device: {
+            agentId, status: dev.status, bound: !!dev.user_id, lastSeen: dev.last_seen_at, killUntil: dev.kill_until,
+            publicKey: dev.public_key_x25519,   // Agent 的 E2EE 公钥（手机端据此派生）
+          } })
         : json({ ok: false, error: '设备不存在' }, 404);
     }
     if (method === 'POST' && pathname.startsWith('/v1/devices/') && pathname.endsWith('/kill')) {

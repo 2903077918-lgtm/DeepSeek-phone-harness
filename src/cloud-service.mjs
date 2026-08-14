@@ -6,7 +6,9 @@
 // 本模块不发起连接、不持密钥明文；密钥与设备凭据由调用方(config)注入。
 
 import { MSG_TYPES, validateEnvelope } from './protocol.js';
-import { decrypt, encrypt, deriveSessionKey } from './e2ee.js';
+import {
+  deriveSessionKey as deriveP256Key, encrypt as encryptP256, decrypt as decryptP256,
+} from './e2ee-web.js';
 import { detectRiskLevel, summarizeRisk, requiresConfirm, RISK_HIGH } from './guard.js';
 import { createAuditLog } from './audit.js';
 
@@ -14,41 +16,38 @@ export function createCloudService(opts = {}) {
   const {
     transport,          // cloud transport（createCloudTransport 产物），需 on()/sendResult/sendStatus/sendAck/sendRaw
     executor,           // executor（.run(task, {sessionId}) → result）
-    config = {},        // {cloud:{url,deviceToken,e2ee:{privateKey,peerPublicKey,salt}}}
+    config = {},        // {cloud:{url,deviceToken,e2ee:{privateKey}}}
     confirmPolicy = 'high',
     log = console,
     auditFile = null,   // 本地审计路径（null 则不落盘）
-    deriveKey = deriveSessionKey, // 便于测试注入
   } = opts;
 
   const audit = auditFile ? createAuditLog(auditFile) : null;
+  // Agent 本机的 P-256 E2EE 私钥（generateKeyPair().privateKey）；缺省则走明文路径
+  const agentPrivate = config && config.cloud && config.cloud.e2ee && config.cloud.e2ee.privateKey;
 
-  // 派生共享密钥（手机 E2EE 公钥 + Agent 私钥），供加解密任务内容
-  let sessionKey = null;
-  async function resolveSessionKey() {
-    if (sessionKey) return sessionKey;
-    const e = config && config.cloud && config.cloud.e2ee;
-    if (!e || !e.privateKey || !e.peerPublicKey) return null; // 未配对 → 走明文路径
-    sessionKey = await deriveKey(e.privateKey, e.peerPublicKey, e.salt);
-    return sessionKey;
+  // 按本次任务动态派生：payload.senderKey=手机公钥 + payload.salt → 本次 AES 密钥
+  async function taskKey(payload) {
+    if (!agentPrivate || !payload || !payload.senderKey) return null;
+    return deriveP256Key(agentPrivate, payload.senderKey, payload.salt);
   }
 
-  // 解密任务 prompt：优先 E2EE 密文，其次明文（未配对/明文 task.submit）
+  // 解密任务 prompt：E2EE 密文（pay.senderKey+salt 派生）→ 明文；否则回退 payload.prompt
   async function promptOf(payload) {
-    const key = await resolveSessionKey();
+    const key = await taskKey(payload);
     if (key && payload && typeof payload.promptCipher === 'object') {
-      const p = decrypt(key, payload.promptCipher, String(payload.taskId || ''));
-      if (p) return p.toString('utf8');
+      const p = await decryptP256(key, payload.promptCipher, String(payload.taskId || ''));
+      if (p) return new TextDecoder().decode(p);
     }
     return payload && typeof payload.prompt === 'string' ? payload.prompt : '';
   }
 
-  // 加密任务结果（E2EE）；无密钥时原样回传
-  async function resultBox(taskId, result) {
-    const key = await resolveSessionKey();
+  // 加密任务结果（用本次任务派生的 key）；无 key 时原样回传
+  async function resultBox(taskId, result, key) {
     if (!key) return { ...result };
     const plain = JSON.stringify({ ok: result.ok, stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, elapsedMs: result.elapsedMs });
-    return { ...result, result_cipher: encrypt(key, plain, String(taskId || '')), e2ee: true };
+    const box = await encryptP256(key, plain, String(taskId || ''));
+    return { ...result, result_cipher: box, e2ee: true };
   }
 
   // ---- 消息分发：云端 → Agent ----
@@ -94,9 +93,10 @@ export function createCloudService(opts = {}) {
 
     transport.sendStatus(taskId, 'running', { taskId, riskLevel });
     try {
+      const key = await taskKey(payload);                 // 本次任务的会话密钥（供结果加密）
       const result = await executor.run(prompt, {});
       audit?.append('task.result', { taskId, ok: !!result.ok, backend: result.backend });
-      transport.sendResult(taskId, await resultBox(taskId, result));
+      transport.sendResult(taskId, await resultBox(taskId, result, key));
     } catch (e) {
       audit?.append('task.failed', { taskId, error: String(e) });
       transport.sendResult(taskId, { ok: false, exitCode: -1, stderr: String(e), elapsedMs: 0 });
@@ -149,13 +149,12 @@ export function createCloudService(opts = {}) {
   }
 
   function handleBindRevoked() {
-    log.warn('[cloud] 收到 bind.revoked，设备被解绑，清空会话密钥');
-    sessionKey = null;
+    log.warn('[cloud] 收到 bind.revoked，设备被解绑（本机 E2EE 私钥保留，后续重配对后换新）');
     return { revoked: true };
   }
 
   // 接入 transport 消息流
   transport.on('message', handleMessage);
 
-  return { handleMessage, handleTaskSubmit, resolveSessionKey, promptOf, resultBox };
+  return { handleMessage, handleTaskSubmit, promptOf, resultBox };
 }
