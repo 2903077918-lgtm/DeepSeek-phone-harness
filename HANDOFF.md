@@ -7,23 +7,24 @@
 
 ## 〇、恢复点（压缩后从这里继续）
 
-**当前里程碑**：手机远程控制 DSH 的「云端 + 手机 web + E2EE」代码全链路已就绪并本地验证；唯一剩 L3 部署(需你认证)。
+**当前里程碑**：手机远程控制 DSH 的「云端(纯REST+轮询,Vercel友好) + 手机web + E2EE」代码就绪。部署目标=Vercel+Supabase(Cloudflare域名)，**不用VPS**。
 
-**已完成并提交**（git 均已在 main）：
-1. **手机 web 云端控制台** `web/cloud.html`（独立连 cloud-relay，与连 LAN 的 index.html 并存）：云端地址/账号注册登录、设备配对(配对码)、任务加密下发、结果解密、审批允许/拒绝；CORS 已加
-2. **云端后端** `cloud-relay/`：Cloudflare Worker + RelayDO + Supabase 独立库 + 完整 REST(`/v1/auth|devices|tasks|confirm|kill`)+ CORS；**已可在本地 `wrangler dev` 连你本机 Supabase 端到端验证**(注册/登录/设备/配对/任务)
-3. **跨端 E2EE**：`src/e2ee-web.js`(纯 WebCrypto P-256 ECDH+HKDF+AES-GCM，浏览器+Node 通用)+ `web/e2ee-web.js` 副本；Agent `cloud-service.mjs` 按任务动态派生密钥
-4. **Agent 云端接入口**：`src/transport/cloud.mjs`(WS 出站)+ `src/cloud-register.mjs`(生成密钥/上报公钥/配对码)+ `agent.mjs --mode=cloud|lan|both`
+**已完成并提交**：
+1. **手机web** `web/cloud.html` + `e2ee-web.js`(浏览器E2EE副本)：云端地址/账号/设备配对/加密任务/解密结果/审批；CORS已加
+2. **云端后端** `cloud-relay/`(纯REST，无Durable Object/WS，**可部署Vercel**)：账号/devices(配对码+公钥)/tasks(存sender_key+salt)/confirm/kill + **Agent轮询协议** `GET /v1/poll` + `POST /v1/agent/tasks/:id/result`
+3. **跨端E2EE** `src/e2ee-web.js`(P-256 ECDH+HKDF+AES-GCM，纯WebCrypto，浏览器+Node通用)；Agent按任务动态派生密钥
+4. **Agent云端** `src/cloud-poller.mjs`(轮询拉任务→E2EE解密→executor→加密回传，替代WS)、`src/cloud-register.mjs`(生成密钥/上报公钥/配对码)、`agent.mjs --mode=cloud`(用poller)
 
-**E2EE 关键约定**（改动须两端一致）：prompt 加解密 AAD=固定 `'ph-task'`；结果加解密 AAD=taskId；salt 手机发送时随机随任务下发、手机记 taskId→salt 供解密结果；senderKey=手机公钥随任务下发，Agent 用本机私钥 ECDH 派生。
-**测试**：`test-e2ee-web.mjs` 7/7、`test-cloud-service.mjs` 9/9、`test-core-modules.mjs` 22/22 均通过。
+**E2EE约定**(改动两端须一致)：prompt AAD=`'ph-task'`，结果 AAD=taskId；salt+手机公钥(senderKey)随任务下发；Agent存本机私钥 config.cloud.e2ee.privateKey。
+**测试**：`test-e2ee-web` 7/7、`test-cloud-service` 9/9、`test-core-modules` 22/22 通过。
+**已验证**：Supabase 库已建、schema 已跑；设备注册/配对/创建加密任务(senderKey/salt落库) 本地能通(用真实Supabase+esbuild bundle)。
 
-**后续步骤（L3，需你主导认证）**：
-1. `cloud-relay`: `npx wrangler deploy` 上线拿域名 → 告知我
-2. 建独立 Supabase 库跑 `schema.sql` 拿 URL+`service_role key` → 填 `cloud-relay/.dev.vars`
-3. `phone-harness/config.json` 填 `cloud:{url,deviceId,deviceToken,e2ee:{privateKey},confirmPolicy}` → `node agent.mjs --mode=cloud`
-4. 手机浏览器开 cloud.html(云端域名)，注册/登录→设备配对码绑定→加密任务(端到端)
-⚠️ 联调 service_role key 留在过对话记录，建议 Supabase **重新生成一次**
+**后续（部署到Vercel，L3）**：
+1. 已确认部署方向=Vercel+Supabase+Cloudflare域名；voltex可作部署参考(用`setx`设系统env: SUPABASE_URL/SERVICE_ROLE_KEY)
+2. 需要：把 cloud-relay 的 fetch handler 包成 Vercel Function 入口 + `vercel.json`，设 env，`vercel deploy`/`vercel --prod` 绑定域名
+3. 本机 Supabase 库 tasks 表已 ALTER 补 `sender_key`,`salt` 列
+4. Agent 填 `config.json.cloud` → `node agent.mjs --mode=cloud`
+⚠️ service_role key 留过对话记录，建议较 Supabase 重新生成。本地调试 curl 发 POST body 在 miniflare/serverless 读不到(用真实浏览器/PowerShell)；本地 bundle-server 端到端调试不可靠(网络不稳定)。
 
 **环境备注**：DSH(127.0.0.1:3080)队列忙时 exec 排队超时；本机 8787 被 codex-relay 占用，cloud-relay 本地用 8790/8791；curl 发 POST body 在 Miniflare 读不到(用 PowerShell/浏览器实测)。
 
