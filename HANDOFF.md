@@ -14,15 +14,15 @@
   - 拆分：executor→`src/dsh-utils.js`（DSH RPC/事件归一化/路径）+ `src/approval-relay.js`（审批+流式缓冲）；顺带修复 `baseName` 缺定义的潜伏 ReferenceError
   - 新增：`src/protocol.js`（信封/消息类型/seq）、`src/e2ee.js`（X25519+HKDF+AES-GCM）、`src/guard.js`（风险分级）、`src/audit.js`（追加审计+hash chain）
   - 验证：`node test-core-modules.mjs` 22/22 通过；LAN 回归 verify-v2 4/4 通过；`/api/dsh-workspaces` bug 修复确认
-- **最近完成**（git a94f3a7 传输层 / becf4e0 云端骨架 / f105c7c Agent 接线）：
-  - Agent 云端传输层 `src/transport/cloud.mjs`：WSS 出站客户端，单测 `test-cloud-transport.mjs` 12/12
-  - 云端骨架 `cloud-relay/`：Cloudflare Worker + RelayDO + Supabase schema；TS typecheck + 协议一致 4/4
-  - **Agent 接线** `src/cloud-service.mjs`：收 task.submit→E2EE 解密→guard 风险分级+确认→executor→加密回传；`agent.mjs --mode=lan|both|cloud`（读 config.json.cloud 节）
-  - 全部单测：core 22 + cloud-transport 12 + cloud-service 10 通过；LAN 冒烟无回归；cloud 无配置优雅跳过
-- **下一步候选**（需你主导部署认证，L3）：
-  1. 建独立 Supabase 数据库 → SQL Editor 执行 `cloud-relay/supabase/schema.sql` → 拿 URL + service_role key
-  2. `cloud-relay`: `npx wrangler login` → `wrangler secret put SUPABASE_URL/SERVICE_ROLE_KEY` → `wrangler deploy` → 告知域名
-  3. 在 `config.json` 填 `cloud:{url,deviceId,deviceToken,resumeToken?,e2ee:{privateKey,peerPublicKey,salt},confirmPolicy}` → `node agent.mjs --mode=cloud`
+- **最近完成**（a94f3a7 传输层 / becf4e0 云端骨架 / f105c7c Agent 接线 / 0aaa96f 云端 REST）：
+  - Agent 云端传输层 `src/transport/cloud.mjs`：WSS 出站客户端，单测 12/12
+  - Agent 接线 `src/cloud-service.mjs`：task.submit→E2EE→guard→executor→回传，`--mode=lan|both|cloud`，单测 10/10
+  - 云端 `cloud-relay/`：Cloudflare Worker + RelayDO + **完整 REST 控制面**（账号/设备配对/任务 CRUD/confirm/kill）+ WebCrypto 存储层 + Supabase schema；tsc 通过 + 密码/配对逻辑 6/6 + 协议一致 4/4
+- **下一步候选**（部署认证 L3）：
+  1. 建独立 Supabase → SQL Editor 执行 `cloud-relay/supabase/schema.sql` → 拿 URL + service_role key
+  2. `cloud-relay`: `npx wrangler login` → `secret put` → `deploy` → 告知域名
+  3. `config.json` 填 `cloud:{url,deviceId,deviceToken,e2ee,confirmPolicy}` → `node agent.mjs --mode=cloud`
+  4. 手机端 web 页接云端（当前 web/index.html 仍连 LAN 8788）
 - **环境备注**：DSH web（127.0.0.1:3080）队列繁忙时（多个会话 running）exec 会排队超时——非 relay 故障，等队列清空即可
 
 ---
