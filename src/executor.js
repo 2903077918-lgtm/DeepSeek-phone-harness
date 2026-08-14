@@ -157,8 +157,9 @@ function isoTime(t) {
 }
 
 // 会话事件 → 流式条目（/api/events 增量用）
-// 提取规则：assistant/chunk 增量文本；assistant/message 与 user/message 的 content[].text；
-//   tool/call 的 name；其余事件保留 type 但无 text（前端可据此感知 turn/end 等状态）。
+// 提取规则：assistant/chunk 增量文本（text-delta / reasoning-delta / tool-call-delta / block-start）；
+//   assistant/message 与 user/message 的 content[].text；tool/call 的 name；
+//   其余事件保留 type 但无 text（前端可据此感知 turn/end 等状态）。
 function eventToStreamItem(ev) {
   if (!ev || typeof ev !== 'object') return null;
   const type = ev.type;
@@ -167,7 +168,23 @@ function eventToStreamItem(ev) {
   let subtype = null;
   if (type === 'assistant/chunk') {
     const chunk = data.chunk;
-    if (chunk && typeof chunk.text === 'string') { text = chunk.text; subtype = chunk.type || null; }
+    if (chunk && typeof chunk === 'object') {
+      // DSH chunk 变体：text-delta（可见增量）/ reasoning-delta（推理）/ tool-call-delta / block-start / block-end
+      const ctype = chunk.type;
+      if (ctype === 'text-delta' && typeof chunk.text === 'string') {
+        text = chunk.text;
+        subtype = 'text';
+      } else if (ctype === 'reasoning-delta' && typeof chunk.text === 'string') {
+        text = chunk.text;
+        subtype = 'reasoning';
+      } else if (ctype === 'tool-call-delta' && typeof chunk.name === 'string') {
+        text = chunk.name;
+        subtype = 'tool';
+      } else if (ctype === 'block-start') {
+        subtype = 'block-start';
+        text = '';
+      }
+    }
   } else if (type === 'assistant/message' || type === 'user/message') {
     const content = type === 'assistant/message' ? (data.message && data.message.content) : data.content;
     if (Array.isArray(content)) {
