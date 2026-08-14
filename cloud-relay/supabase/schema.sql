@@ -113,5 +113,6 @@ alter table public.tokens     enable row level security;
 alter table public.audit_log  enable row level security;
 
 -- 阶段3（单用户自用）用 service_role key（RLS 不生效）；上多租户后按 user_id 建 policy。
--- 占位 policy，阶段 4 按需完善：
-create policy if not exists p_devices_all on public.devices for all using (true) with check (true);
+-- 占位 policy，阶段 4 按需完善（CREATE POLICY 无 IF NOT EXISTS，重跑需先 drop）：
+-- drop policy if exists p_devices_all on public.devices;
+create policy p_devices_all on public.devices for all using (true) with check (true);
