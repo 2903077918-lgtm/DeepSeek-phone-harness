@@ -89,6 +89,12 @@ svg { flex: none; }
 .drawer-item .main { flex: 1; min-width: 0; }
 .drawer-item .t { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .drawer-item .s { font-size: 11px; color: var(--text-2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drawer-title-row { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; }
+.drawer-title-row .t { display: block; }
+.ses-status { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.ses-status.run { background: var(--blue); box-shadow: 0 0 0 0 rgba(62,150,255,0.5); animation: ses-pulse 1.6s infinite; }
+.ses-status.idle { background: var(--text-3); }
+@keyframes ses-pulse { 0% { box-shadow: 0 0 0 0 rgba(62,150,255,0.5); } 70% { box-shadow: 0 0 0 6px rgba(62,150,255,0); } 100% { box-shadow: 0 0 0 0 rgba(62,150,255,0); } }
 .drawer-foot { padding: 10px; border-top: 1px solid rgba(255,255,255,0.08); }
 .drawer-foot .item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 9px; color: var(--text-2); font-size: 13px; }
 .drawer-foot .item:hover { background: rgba(255,255,255,0.06); color: var(--text); }
@@ -176,6 +182,17 @@ svg { flex: none; }
 .list-item .t { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list-item .s { font-size: 11.5px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list-item .badge { font-size: 11px; color: var(--text-2); background: rgba(255,255,255,0.06); border-radius: 999px; padding: 2px 8px; flex: none; }
+.ws-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; margin-bottom: 8px; background: var(--bg-el); border: 1px solid var(--border); border-radius: var(--radius-sm); text-align: left; transition: background 0.1s; }
+.ws-item .ic { width: 34px; height: 34px; border-radius: 10px; background: rgba(255,255,255,0.06); display: grid; place-items: center; color: var(--text-2); flex: none; }
+.ws-item .main { flex: 1; min-width: 0; cursor: pointer; }
+.ws-item .t { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-item .s { font-size: 11.5px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-item .badge { font-size: 11px; color: var(--text-2); background: rgba(255,255,255,0.06); border-radius: 999px; padding: 2px 8px; flex: none; }
+.ws-item .ws-actions { display: flex; flex: none; gap: 4px; opacity: 0; transition: opacity 0.15s; }
+.ws-item:hover .ws-actions, .ws-item:focus-within .ws-actions { opacity: 1; }
+.ws-item .ws-act { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: var(--text-3); cursor: pointer; }
+.ws-item .ws-act:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.ws-item .ws-act.del:hover { background: var(--red-soft); color: var(--red); }
 .empty { text-align: center; color: var(--text-2); font-size: 13px; padding: 40px 20px; line-height: 1.8; }
 
 /* 对话头 */
@@ -230,6 +247,12 @@ svg { flex: none; }
 .asst-body pre { background: var(--bg-sel); border: 1px solid var(--border-strong); border-radius: 8px; padding: 10px 12px; margin: 6px 0 10px; overflow-x: auto; }
 .asst-body pre code { background: none; border: none; padding: 0; font-size: 12px; line-height: 1.6; display: block; white-space: pre-wrap; word-break: break-word; color: var(--text); }
 .asst-body blockquote { margin: 6px 0; padding: 2px 12px; border-left: 3px solid var(--blue-2); background: rgba(95,167,255,0.08); color: var(--text-2); }
+.md-table-wrap { overflow-x: auto; margin: 6px 0 10px; border: 1px solid var(--border); border-radius: 8px; }
+.md-table { border-collapse: collapse; width: 100%; font-size: 12.5px; line-height: 1.5; min-width: 100%; }
+.md-table td { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); padding: 6px 10px; color: var(--text); vertical-align: top; }
+.md-table tr:last-child td { border-bottom: none; }
+.md-table td:last-child { border-right: none; }
+.md-table tr:first-child td { font-weight: 600; color: var(--text); background: rgba(255,255,255,0.04); }
 .asst-body a { color: var(--blue-2); text-decoration: none; }
 .msg .meta { font-size: 10.5px; color: var(--text-3); margin-top: 4px; }
 .msg.user .meta { text-align: right; }
@@ -328,6 +351,13 @@ svg { flex: none; }
 
 /* composer */
 .inputbar { border-top: 1px solid var(--border); background: var(--bg); padding: 8px 12px calc(var(--safe-bottom) + 8px); flex: none; }
+/* 对话页底部统计条（最下方：token 用量 / 缓存命中） */
+.chat-stat { flex: none; display: flex; align-items: center; gap: 10px; padding: 5px 14px calc(2px + env(safe-area-inset-bottom, 0px)); font-size: 10.5px; color: var(--text-3); background: var(--bg); border-top: 1px solid var(--border); overflow-x: auto; white-space: nowrap; }
+.chat-stat .st-item { display: inline-flex; align-items: center; gap: 4px; }
+.chat-stat .st-ic { display: inline-grid; place-items: center; color: var(--text-3); }
+.chat-stat .st-cache { color: var(--gold); }
+.chat-stat .st-run { color: var(--blue-2); }
+.chat-stat .st-warn { color: var(--red); }
 .attach-row { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; -webkit-overflow-scrolling: touch; }
 .attach-item { position: relative; flex: none; width: 56px; height: 56px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-strong); background: var(--bg-el); }
 .attach-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -374,6 +404,7 @@ svg { flex: none; }
 }
 .model-pill:active { transform: scale(0.97); }
 .model-pill .mc-chev { color: var(--text-3); }
+.model-pill.preset-pill { color: var(--gold); border-color: rgba(201,162,39,0.4); background: rgba(201,162,39,0.08); }
 .sheet-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 60; display: flex; align-items: flex-end; }
 .sheet { width: 100%; max-height: 70vh; background: var(--bg-drawer); border-radius: 20px 20px 0 0; display: flex; flex-direction: column; overflow: hidden; }
 .sheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; }
@@ -482,6 +513,18 @@ svg { flex: none; }
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
         <span>任务</span>
       </button>
+      <button class="item" id="goalBtn" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
+        <span>目标</span>
+      </button>
+      <button class="item" id="skillBtn" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span>技能</span>
+      </button>
+      <button class="item" id="agentsBtn" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M1 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/><path d="M17 8a4 4 0 0 1 0 8"/></svg>
+        <span>子代理</span>
+      </button>
       <button class="item" id="connBtn" type="button">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M21 8a9 9 0 1 0 1 6"/></svg>
         <span>连接设置</span>
@@ -543,6 +586,7 @@ svg { flex: none; }
           返回
         </button>
         <div class="info"><div class="t">工作区</div><div class="s" id="wsCount"></div></div>
+        <button class="btn ghost sm" id="wsNewBtn" type="button">新建</button>
       </div>
       <div class="scroll">
         <div class="sec-title"><span>选择工作区</span></div>
@@ -583,10 +627,16 @@ svg { flex: none; }
               <span id="modelBtnLabel">模型</span>
               <svg class="mc-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
+            <button class="model-pill preset-pill" id="presetBtn" type="button" title="切换模式">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+              <span id="presetBtnLabel">标准模式</span>
+              <svg class="mc-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
             <span class="composer-models-hint" id="composerModelHint"></span>
           </div>
         </div>
       </footer>
+      <div class="chat-stat hidden" id="chatStat"></div>
     </div>
 
     <!-- 模型选择面板（对标 DSH Web GUI 的模型选择） -->
@@ -594,6 +644,14 @@ svg { flex: none; }
       <div class="sheet" id="modelSheet">
         <div class="sheet-head"><div class="sheet-title">选择模型</div><button class="icon-btn" id="modelClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
         <div class="sheet-body" id="modelList"></div>
+      </div>
+    </div>
+
+    <!-- 模式（Agent 预设）选择面板 -->
+    <div class="sheet-mask hidden" id="presetMask">
+      <div class="sheet">
+        <div class="sheet-head"><div class="sheet-title">选择模式</div><button class="icon-btn" id="presetClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+        <div class="sheet-body" id="presetList"></div>
       </div>
     </div>
 
@@ -652,6 +710,55 @@ svg { flex: none; }
       <div class="scroll" id="tasksScroll">
         <div id="tasksList"></div>
         <div class="empty hidden" id="tasksEmpty">暂无任务记录</div>
+      </div>
+    </div>
+
+    <!-- 目标页 -->
+    <div class="pane hidden" id="paneGoal">
+      <div class="chat-head">
+        <button class="btn ghost sm" id="goalBack" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          返回
+        </button>
+        <div class="info"><div class="t">目标</div><div class="s" id="goalSub"></div></div>
+        <button class="btn ghost sm" id="goalNew" type="button">新建</button>
+      </div>
+      <div class="scroll">
+        <div id="goalList"></div>
+        <div class="empty hidden" id="goalEmpty">当前会话暂无目标</div>
+      </div>
+    </div>
+
+    <!-- 技能页 -->
+    <div class="pane hidden" id="paneSkill">
+      <div class="chat-head">
+        <button class="btn ghost sm" id="skillBack" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          返回
+        </button>
+        <div class="info"><div class="t">技能</div><div class="s" id="skillCount"></div></div>
+        <button class="btn ghost sm" id="skillRefresh" type="button">刷新</button>
+      </div>
+      <div class="scroll">
+        <div class="sec-title"><span>电脑上的技能</span></div>
+        <div id="skillList"></div>
+        <div class="empty hidden" id="skillEmpty">未找到技能</div>
+      </div>
+    </div>
+
+    <!-- 子代理页 -->
+    <div class="pane hidden" id="paneAgents">
+      <div class="chat-head">
+        <button class="btn ghost sm" id="agentsBack" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          返回
+        </button>
+        <div class="info"><div class="t">子代理</div><div class="s" id="agentsCount"></div></div>
+        <button class="btn ghost sm" id="agentsRefresh" type="button">刷新</button>
+      </div>
+      <div class="scroll">
+        <div id="agentsList"></div>
+        <div class="empty hidden" id="agentsEmpty">当前会话没有活动子代理</div>
       </div>
     </div>
 
@@ -726,6 +833,7 @@ svg { flex: none; }
     streamBase: 0,
     approvals: [],        // 待审批/待回答 [{kind,approvalId,questionKey,sessionId,toolName,reason,questions}]
     questionDrafts: {},   // questionKey -> {selections:[], custom:''}（防重渲染丢选择）
+    taskStat: { input: 0, output: 0, cacheRead: 0 }, // 当前任务 token 统计（最下方展示）
     apprTimer: null,
     sessQuery: '',
   };
@@ -739,7 +847,7 @@ svg { flex: none; }
   function fmtTime(iso) { if (!iso) return ''; var d = new Date(iso); if (isNaN(d)) return ''; return d.toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
   function fmtAgo(iso) { if (!iso) return ''; var s = (Date.now() - new Date(iso).getTime()) / 1000; if (s < 60) return '刚刚'; if (s < 3600) return Math.floor(s / 60) + ' 分钟前'; if (s < 86400) return Math.floor(s / 3600) + ' 小时前'; return fmtTime(iso); }
   function showPane(id) {
-    ['paneConnect', 'paneWorkspaces', 'paneChat', 'paneFiles', 'paneEditor', 'paneTerminal', 'paneTasks', 'paneSettings'].forEach(function (p) {
+    ['paneConnect', 'paneWorkspaces', 'paneChat', 'paneFiles', 'paneEditor', 'paneTerminal', 'paneTasks', 'paneGoal', 'paneSkill', 'paneAgents', 'paneSettings'].forEach(function (p) {
       var el = $(p); if (el) el.classList.toggle('hidden', p !== id);
     });
   }
@@ -839,14 +947,48 @@ svg { flex: none; }
     $('wsEmpty').classList.toggle('hidden', state.ws.length > 0);
     state.ws.forEach(function (w, i) {
       var it = document.createElement('button');
-      it.type = 'button'; it.className = 'list-item';
+      it.type = 'button'; it.className = 'ws-item';
       it.innerHTML =
         '<span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></span>' +
         '<span class="main"><span class="t">' + esc(w.title || w.path) + '</span><span class="s">' + esc(w.path || '') + '</span></span>' +
-        '<span class="badge">' + (typeof w.sessionCount === 'number' ? w.sessionCount : '') + '</span>';
-      it.addEventListener('click', function () { selectWorkspace(i); });
+        '<span class="badge">' + (typeof w.sessionCount === 'number' ? w.sessionCount : '') + '</span>' +
+        '<span class="ws-actions"><span class="ws-act" data-act="rename" title="重命名">' + penSvg() + '</span>' +
+        '<span class="ws-act del" data-act="del" title="删除">' + trashSvg() + '</span></span>';
+      it.querySelector('.ws-actions').addEventListener('click', function (e) { e.stopPropagation(); });
+      var m = it.querySelector('.main');
+      m.addEventListener('click', function () { selectWorkspace(i); });
+      it.querySelector('[data-act="rename"]').addEventListener('click', function () { renameWorkspaceUI(w); });
+      it.querySelector('[data-act="del"]').addEventListener('click', function () { deleteWorkspaceUI(w); });
       box.appendChild(it);
     });
+  }
+  function penSvg() { return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>'; }
+  function trashSvg() { return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'; }
+  async function newWorkspaceUI() {
+    var p = prompt('新建工作区路径（电脑上的目录绝对路径）：');
+    if (!p || !p.trim()) return;
+    try {
+      var d = await api('/api/dsh-workspace-op', { method: 'POST', body: JSON.stringify({ action: 'create', path: p.trim() }), timeoutMs: 15000 });
+      if (d && d.ok) { toast('已创建工作区'); await loadWorkspaces(); }
+      else toast((d && d.error) || '创建失败', true);
+    } catch (e) { toast('失败：' + e.message, true); }
+  }
+  async function renameWorkspaceUI(w) {
+    var t = prompt('工作区标题：', w.title || '');
+    if (!t || !t.trim()) return;
+    try {
+      var d = await api('/api/dsh-workspace-op', { method: 'POST', body: JSON.stringify({ action: 'rename', workspaceId: w.workspaceId, title: t.trim() }), timeoutMs: 15000 });
+      if (d && d.ok) { toast('已重命名'); await loadWorkspaces(); }
+      else toast((d && d.error) || '失败', true);
+    } catch (e) { toast('失败：' + e.message, true); }
+  }
+  async function deleteWorkspaceUI(w) {
+    if (!confirm('删除工作区 "' + (w.title || w.path || '') + '"？（不动磁盘文件，仅移除工作区记录）')) return;
+    try {
+      var d = await api('/api/dsh-workspace-op', { method: 'POST', body: JSON.stringify({ action: 'delete', workspaceId: w.workspaceId }), timeoutMs: 15000 });
+      if (d && d.ok) { toast('已删除'); if (state.currentWs && state.currentWs.workspaceId === w.workspaceId) { state.currentWs = null; $('wsLabel').textContent = '未选择工作区'; } await loadWorkspaces(); }
+      else toast((d && d.error) || '失败', true);
+    } catch (e) { toast('失败：' + e.message, true); }
   }
   async function selectWorkspace(i) {
     var ws = state.ws[i];
@@ -904,10 +1046,16 @@ svg { flex: none; }
       var title = s.title || s.cwd || '会话';
       var meta = String(s.cwd || '');
       if (typeof s.messageCount === 'number') meta += (meta ? ' · ' : '') + s.messageCount + ' 条';
+      if (s.running) meta += (meta ? ' · ' : '') + '进行中';
       var main = document.createElement('div');
       main.className = 'main';
-      main.innerHTML = '<span class="t">' + esc(title) + '</span><span class="s">' + esc(meta) + '</span>';
+      main.innerHTML = '<span class="drawer-title-row"><span class="ses-status' + (s.running ? ' run' : ' idle') + '"></span><span class="t">' + esc(title) + '</span></span><span class="s">' + esc(meta) + '</span>';
       main.addEventListener('click', function () { openSession(s); closeDrawer(); });
+      var fk = document.createElement('button');
+      fk.className = 'drawer-del';
+      fk.title = '分支会话';
+      fk.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>';
+      fk.addEventListener('click', function () { forkSession(s); });
       var rn = document.createElement('button');
       rn.className = 'drawer-del';
       rn.title = '重命名会话';
@@ -919,10 +1067,22 @@ svg { flex: none; }
       del.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
       del.addEventListener('click', function () { deleteSession(s); });
       it.appendChild(main);
+      it.appendChild(fk);
       it.appendChild(rn);
       it.appendChild(del);
       list.appendChild(it);
     });
+  }
+  // 分支会话（session.fork）
+  async function forkSession(s) {
+    if (!confirm('分支会话 "' + (s.title || s.cwd || '') + '"？（创建独立副本继续）')) return;
+    try {
+      var d = await api('/api/dsh-fork', { method: 'POST', body: JSON.stringify({ sessionId: s.sessionId }), timeoutMs: 20000 });
+      if (d && d.ok && d.sessionId) {
+        toast('已创建分支会话');
+        refreshSessions();
+      } else { toast('分支失败', true); }
+    } catch (e) { toast('分支失败：' + e.message, true); }
   }
   // 删除会话（仅移除本地抽屉项；DSH 会话由电脑端管理）
   function deleteSession(s) {
@@ -1006,7 +1166,44 @@ svg { flex: none; }
     var hasStreaming = state.msgs.some(function (m) { return m.streaming; });
     if (state.running && !hasStreaming) tl.appendChild(pendingEl());
     renderApprovals();
+    renderTaskStat();
     tl.scrollTop = tl.scrollHeight;
+  }
+  // 最下方统计条：token 用量 / 缓存命中
+  function fmtTok(n) {
+    if (!n) return '0';
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'm';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+    return String(n);
+  }
+  function renderTaskStat() {
+    var el = $('chatStat');
+    if (!el) return;
+    var s = state.taskStat;
+    // 会话级元数据：权限 / 进行中 / 上下文压力
+    var perm = '';
+    var sess = state.currentSess;
+    if (sess && sess.permissions && sess.permissions.currentValue) {
+      var pv = sess.permissions.currentValue;
+      var pl = { 'read-only': '只读', 'workspace-write': '工作区写入', 'danger-full-access': '完全访问' }[pv] || pv;
+      perm = ' <span class="st-item"><span class="st-ic"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' + esc(pl) + '</span>';
+    }
+    var pres = '';
+    if (sess && sess.contextPressure && typeof sess.contextPressure === 'object') {
+      var cp = sess.contextPressure;
+      var pvuse = (typeof cp.current === 'number') ? cp.current : (typeof cp.percent === 'number' ? cp.percent : undefined);
+      if (pvuse != null) pres = ' <span class="st-item' + (pvuse >= 0.8 ? ' st-warn' : '') + '"><span class="st-ic"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>上下文 ' + Math.round(pvuse * 100) + '%</span>';
+    }
+    var run = (sess && sess.running) ? ' <span class="st-item st-run"><span class="st-ic"><span class="spin" style="width:10px;height:10px"></span></span>执行中</span>' : '';
+    var has = s.output || s.input || s.cacheRead || perm || pres || run;
+    if (!has) { el.classList.add('hidden'); el.textContent = ''; return; }
+    el.classList.remove('hidden');
+    el.innerHTML =
+      run +
+      (s.cacheRead ? '<span class="st-item st-cache"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:grid;place-items:center"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' + fmtTok(s.cacheRead) + ' 缓存命中</span>' : '') +
+      '<span class="st-item"><span class="st-ic">&#8593;</span>输入 ' + fmtTok(s.input) + '</span>' +
+      '<span class="st-item"><span class="st-ic">&#8595;</span>输出 ' + fmtTok(s.output) + '</span>' +
+      pres + perm;
   }
   function msgEl(m) {
     if (m.kind === 'tool' || m.kind === 'tool-result') {
@@ -1127,13 +1324,26 @@ svg { flex: none; }
     var html = '', codeBuf = [], inCode = false, inList = null, listBuf = [];
     function flushList() { if (!inList) return; html += '<' + inList + '>' + listBuf.join('') + '</' + inList + '>'; listBuf = []; inList = null; }
     function flushCode() { html += '<pre><code>' + codeBuf.join('\n') + '</code></pre>'; codeBuf = []; }
+    // 表格检测：连续 `|` 管道行（第二行为分隔行 --- 可选）
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
       if (/^(`{3,}|~{3,})/.test(line)) { flushList(); if (inCode) { flushCode(); inCode = false; } else { inCode = true; codeBuf = []; } continue; }
       if (inCode) { codeBuf.push(line); continue; }
       var t = line.trim();
       if (!t) { flushList(); continue; }
-      if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { flushList(); html += '<hr>'; continue; }
+      // 表格块：本行是管道行（含 | 且非代码）
+      if (/^\s*\|/.test(t) && /\|/.test(t.slice(1))) {
+        var tableLines = [];
+        while (i < lines.length && /\|/.test(lines[i])) {
+          var cand = lines[i].trim();
+          var sep = cand.replace(/\|/g, '').replace(/[\s\-\:]/g, '');
+          if (sep === '' && /\-/.test(cand)) { i++; continue; } // 分隔行
+          tableLines.push(cand);
+          i++;
+        }
+        i--;
+        if (tableLines.length) { flushList(); html += renderTable(tableLines); continue; }
+      }
       var h = /^(#{1,4})\s+(.*)$/.exec(t);
       if (h) { flushList(); var lvl = Math.min(h[1].length + 1, 6); html += '<h' + lvl + '>' + inlineMd(h[2]) + '</h' + lvl + '>'; continue; }
       if (t.indexOf('&gt;') === 0) { flushList(); html += '<blockquote>' + inlineMd(t.replace(/^&gt;\s?/, '')) + '</blockquote>'; continue; }
@@ -1146,6 +1356,26 @@ svg { flex: none; }
     flushList();
     if (inCode) flushCode();
     return html || '<p></p>';
+    function renderTable(rows) {
+      var cells = [];
+      for (var r = 0; r < rows.length; r++) {
+        var cs = rows[r].replace(/^\|/, '').replace(/\|$/, '').split('|').map(function (c) { return c.trim(); });
+        if (r === 1 && cs.every(function (c) { return /^-+$/.test(c.replace(/[: ]/g, '')); })) { cells.push(null); continue; } // 分隔行
+        if (cs.length === 1 && cs[0] === '') cs = [];
+        cells.push(cs);
+      }
+      var cols = 0; cells.forEach(function (r) { if (r && r.length > cols) cols = r.length; });
+      var out = '<div class="md-table-wrap"><table class="md-table"><tbody>';
+      for (var r2 = 0; r2 < cells.length; r2++) {
+        var row = cells[r2];
+        if (!row) continue;
+        out += '<tr>';
+        for (var c = 0; c < Math.max(row.length, cols); c++) out += '<td>' + (c < row.length ? inlineMd(row[c]) : '') + '</td>';
+        out += '</tr>';
+      }
+      out += '</tbody></table></div>';
+      return out;
+    }
     function inlineMd(s) {
       return s
         .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -1170,9 +1400,70 @@ svg { flex: none; }
       $('modelBtnLabel').textContent = lbl;
       $('composerModels').classList.remove('hidden');
       var hint = $('composerModelHint');
-      if (hint) hint.textContent = modelState.current && modelState.current.reasoningEffort
-        ? ('· ' + modelState.current.reasoningEffort) : '';
+      if (hint) hint.textContent = (modelState.current && modelState.current.reasoningEffort ? ('· ' + modelState.current.reasoningEffort) : '') + (presetState.name ? ' · ' + presetState.name : '');
     } catch (e) { /* 模型接口不可用则隐藏 */ }
+    loadPresets(sid); // 同步加载模式（预设）
+  }
+
+  // ============ 模式切换（Agent 预设：标准/PTC/极简/创造） ============
+  var presetState = { presets: [], current: null };
+  var presetNameMap = { 'standard': '标准模式', 'minimal': '极简模式', 'code': 'PTC 模式', 'cordis': '创造模式' };
+  async function loadPresets(sid) {
+    if (!sid) return;
+    try {
+      var d = await api('/api/dsh-presets', { timeoutMs: 8000 });
+      if (!d || !d.ok) return;
+      presetState.presets = d.presets || [];
+      // 当前默认：isDefault 或第一个；用户选择后由 selectPreset 更新
+      if (!presetState.current && presetState.presets.length) {
+        var def = presetState.presets.find(function (p) { return p.isDefault; }) || presetState.presets[0];
+        presetState.current = def.id;
+      }
+      renderPresetBtn();
+    } catch (e) { /* 接口不可用则保留默认 */ }
+  }
+  function renderPresetBtn() {
+    var id = presetState.current;
+    var name = id && (presetNameMap[id] || '');
+    if (!name) {
+      var p = presetState.presets.find(function (x) { return x.id === id; });
+      name = (p && p.name) || (id ? id : '标准模式');
+    }
+    $('presetBtnLabel').textContent = name;
+    // 同步 hint
+    var hint = $('composerModelHint');
+    if (hint) hint.textContent = (modelState.current && modelState.current.reasoningEffort ? modelState.current.reasoningEffort + ' · ' : '') + name;
+  }
+  function openPresetSheet() {
+    var list = $('presetList');
+    list.textContent = '';
+    if (!presetState.presets.length) {
+      list.innerHTML = '<div class="empty" style="padding:30px 10px">暂无可选模式</div>';
+    }
+    presetState.presets.forEach(function (p) {
+      var name = presetNameMap[p.id] || p.name || p.id;
+      var it = document.createElement('button');
+      it.type = 'button';
+      it.className = 'model-item' + (presetState.current === p.id ? ' on' : '');
+      it.innerHTML = '<span class="m-name">' + esc(name) + '</span>' +
+        (p.description ? '<span class="m-desc">' + esc(String(p.description).slice(0, 80)) + '</span>' : '') +
+        (presetState.current === p.id ? '<span class="m-check">&#10003;</span>' : '');
+      it.addEventListener('click', function () { selectPreset(p.id, name); });
+      list.appendChild(it);
+    });
+    $('presetMask').classList.remove('hidden');
+  }
+  async function selectPreset(id, name) {
+    if (!state.currentSess) { toast('请先打开一个会话', true); return; }
+    try {
+      var d = await api('/api/dsh-presets', { method: 'POST', body: JSON.stringify({ sessionId: state.currentSess.sessionId, agentPreset: id }), timeoutMs: 15000 });
+      if (d && d.ok) {
+        presetState.current = d.agentPreset || id;
+        renderPresetBtn();
+        toast('已切换模式：' + name);
+      }
+      $('presetMask').classList.add('hidden');
+    } catch (e) { toast('切换模式失败：' + e.message, true); }
   }
   function openModelSheet() {
     var list = $('modelList');
@@ -1215,8 +1506,7 @@ svg { flex: none; }
       if (d && d.ok && d.selected) {
         modelState.current = d.selected;
         $('modelBtnLabel').textContent = d.selected.model || model;
-        var hint = $('composerModelHint');
-        if (hint) hint.textContent = d.selected.reasoningEffort ? ('· ' + d.selected.reasoningEffort) : '';
+        renderPresetBtn(); // 同步更新 hint（模型 + 模式）
         toast('已切换模型：' + (d.selected.model || model));
       }
       $('modelMask').classList.add('hidden');
@@ -1402,6 +1692,13 @@ svg { flex: none; }
               asstMsg.tools.push({ name: ev.text ? '工具结果' : '工具', callId: rid, result: ev.result, isError: ev.isError, running: false });
             }
           }
+        }
+        else if (kind === 'usage' && ev.usage) {
+          // token 用量 / 缓存命中（最下方统计条）
+          var u = ev.usage;
+          state.taskStat.input += u.input || 0;
+          state.taskStat.output += u.output || 0;
+          state.taskStat.cacheRead += u.cacheRead || 0;
         }
       });
       renderTimeline();
@@ -1776,6 +2073,146 @@ svg { flex: none; }
     } else fallback();
   }
 
+  // ============ 目标(goal) —— 对标 DSH goal 界面 ============
+  var goalState = null;
+  async function loadGoal() {
+    if (!state.currentSess) { $('goalList').textContent = ''; $('goalEmpty').classList.remove('hidden'); return; }
+    $('goalSub').textContent = state.currentSess.title || state.currentSess.cwd || '';
+    try {
+      var d = await api('/api/dsh-goals?sessionId=' + enc(state.currentSess.sessionId), { timeoutMs: 8000 });
+      goalState = (d && d.ok && d.goal) || null;
+      renderGoal();
+    } catch (e) { toast('加载目标失败：' + e.message, true); }
+  }
+  function renderGoal() {
+    var box = $('goalList');
+    box.textContent = '';
+    var g = goalState;
+    if (!g || (!g.objective && !g.phase)) { $('goalEmpty').classList.remove('hidden'); return; }
+    $('goalEmpty').classList.add('hidden');
+    var phases = (g.phaseInfo && Array.isArray(g.phaseInfo.phases) && g.phaseInfo.phases) || [];
+    var phaseMap = { active: '进行中', completed: '已完成', blocked: '受阻', paused: '已暂停', idle: '空闲' };
+    var compRounds = typeof g.completedRounds === 'number' ? g.completedRounds : (g.roundStats && g.roundStats.completedRounds);
+    var maxRounds = typeof g.maxGoalRounds === 'number' ? g.maxGoalRounds : (g.phaseInfo && g.phaseInfo.maxRounds);
+    var card = document.createElement('div');
+    card.className = 'settings-card';
+    card.innerHTML =
+      '<div class="set-row"><div class="set-l"><div class="set-t">' + esc(g.objective || '目标') + '</div>' +
+      (g.phase ? '<div class="set-s">阶段：' + esc(phaseMap[g.phase] || g.phase) + '</div>' : '') +
+      (g.detail ? '<div class="set-s">' + esc(g.detail) + '</div>' : '') +
+      '</div></div>';
+    box.appendChild(card);
+    if (typeof compRounds === 'number' && typeof maxRounds === 'number') {
+      var gz = document.createElement('div');
+      gz.style.cssText = 'padding:2px 0 0;font-size:11px;color:var(--text-2)';
+      gz.textContent = '已完成轮次 ' + compRounds + ' / ' + maxRounds;
+      // 进度条
+      var pct = maxRounds ? Math.min(100, Math.round(compRounds / maxRounds * 100)) : 0;
+      gz.innerHTML = '<div style="height:4px;background:var(--bg-sel);border-radius:2px;margin:6px 0"><div style="height:100%;width:' + pct + '%;background:var(--blue);border-radius:2px"></div></div>已完成轮次 ' + compRounds + ' / ' + maxRounds;
+      box.appendChild(gz);
+    }
+    if (g.phase === 'active' || g.phase === 'paused' || g.phase === 'idle') {
+      var row = document.createElement('div');
+      row.className = 'row';
+      row.style.cssText = 'display:flex;gap:8px;margin-top:12px;flex-wrap:wrap';
+      var bPause = document.createElement('button');
+      bPause.className = 'btn ghost sm'; bPause.textContent = g.phase === 'paused' ? '恢复' : '暂停';
+      bPause.addEventListener('click', function () { goalAction(g.phase === 'paused' ? 'resume' : 'pause'); });
+      var bDone = document.createElement('button');
+      bDone.className = 'btn ghost sm'; bDone.textContent = '标记完成';
+      bDone.addEventListener('click', function () { goalAction('complete'); });
+      var bClear = document.createElement('button');
+      bClear.className = 'btn ghost sm danger'; bClear.textContent = '清除';
+      bClear.addEventListener('click', function () { goalAction('clear'); });
+      row.appendChild(bPause); row.appendChild(bDone); row.appendChild(bClear);
+      box.appendChild(row);
+    }
+    if (phases.length) {
+      var sec = document.createElement('div');
+      sec.className = 'sec-title'; sec.style.marginTop = '16px';
+      sec.textContent = '阶段';
+      box.appendChild(sec);
+      phases.forEach(function (ph) {
+        var it = document.createElement('div');
+        it.className = 'set-row';
+        it.innerHTML = '<div class="set-l"><div class="set-t">' + esc(ph.title || String(ph.phase)) + '</div>' +
+          (ph.status ? '<div class="set-s">' + esc(ph.status) + (typeof ph.rounds === 'number' ? ' · ' + ph.rounds + ' 轮' : '') + '</div>' : '') + '</div>';
+        box.appendChild(it);
+      });
+    }
+  }
+  async function goalAction(action) {
+    if (!state.currentSess || !goalState) return;
+    var payload = { action: action, sessionId: state.currentSess.sessionId };
+    if (action === 'create') {
+      var obj = prompt('目标描述：');
+      if (!obj || !obj.trim()) return;
+      payload.objective = obj.trim();
+    } else if (action !== 'clear') {
+      payload.ref = goalState.ref || (goalState.id ? { id: goalState.id, revision: goalState.revision || 1 } : null);
+      if (!payload.ref) { toast('无法定位目标', true); return; }
+    }
+    try {
+      var d = await api('/api/dsh-goals', { method: 'POST', body: JSON.stringify(payload), timeoutMs: 15000 });
+      if (d && d.ok) { toast('已执行'); await loadGoal(); }
+      else toast('操作失败', true);
+    } catch (e) { toast('失败：' + e.message, true); }
+  }
+  function newGoal() {
+    if (!state.currentSess) { toast('请先打开一个会话', true); return; }
+    goalAction('create');
+  }
+
+  // ============ 技能(skill) —— skill.list ============
+  async function loadSkills() {
+    var box = $('skillList');
+    box.textContent = '';
+    $('skillEmpty').classList.add('hidden');
+    if (!state.currentSess) { $('skillCount').textContent = '需先选会话'; $('skillEmpty').classList.remove('hidden'); return; }
+    try {
+      var d = await api('/api/dsh-skill?sessionId=' + enc(state.currentSess.sessionId), { timeoutMs: 8000 });
+      var items = (d && d.ok && d.skills) || [];
+      $('skillCount').textContent = items.length ? items.length + ' 个' : '';
+      if (!items.length) { $('skillEmpty').classList.remove('hidden'); return; }
+      items.forEach(function (sk) {
+        var it = document.createElement('div');
+        it.className = 'set-row';
+        it.innerHTML = '<div class="set-l"><div class="set-t">' + esc(sk.name || sk.id || '技能') + '</div>' +
+          (sk.description ? '<div class="set-s">' + esc(sk.description) + '</div>' : '') +
+          '</div>';
+        box.appendChild(it);
+      });
+    } catch (e) {
+      $('skillEmpty').textContent = '加载失败：' + e.message;
+      $('skillEmpty').classList.remove('hidden');
+    }
+  }
+
+  // ============ 子代理(subagent) —— 对接 /api/agents ============
+  async function loadAgents() {
+    var box = $('agentsList');
+    box.textContent = '';
+    $('agentsEmpty').classList.add('hidden');
+    if (!state.currentSess) { $('agentsCount').textContent = '需先选会话'; $('agentsEmpty').classList.remove('hidden'); return; }
+    try {
+      var d = await api('/api/agents?sessionId=' + enc(state.currentSess.sessionId), { timeoutMs: 8000 });
+      var items = (d && d.ok && d.items) || [];
+      $('agentsCount').textContent = items.length ? items.length + ' 个' : '';
+      if (!items.length) { $('agentsEmpty').classList.remove('hidden'); return; }
+      items.forEach(function (a) {
+        var it = document.createElement('div');
+        it.className = 'set-row';
+        var dot = a.activity === 'running' ? '<span style="color:var(--blue);font-size:10px">&#9679; 运行中</span>' : '<span style="color:var(--text-3);font-size:10px">&#9679; 空闲</span>';
+        it.innerHTML = '<div class="set-l"><div class="set-t">' + esc(a.label || a.sessionId || '子代理') + '</div>' +
+          '<div class="set-s">' + esc(a.sessionId || '') + ' · ' + (a.kind || '') + ' · ' + (a.mode || '') + '</div></div>' + '<div style="flex:none">' + dot + '</div>';
+        box.appendChild(it);
+      });
+    } catch (e) {
+      $('agentsEmpty').textContent = '加载失败：' + e.message;
+      $('agentsEmpty').classList.remove('hidden');
+    }
+  }
+
   function renderSettings() {
     $('setServer').textContent = state.base || '-';
     $('setConn').textContent = $('connLabel').textContent;
@@ -1805,6 +2242,7 @@ svg { flex: none; }
     });
     $('connBtn').addEventListener('click', function () { closeDrawer(); showPane('paneConnect'); });
     $('wsBtn').addEventListener('click', function () { closeDrawer(); showPane('paneWorkspaces'); loadWorkspaces(); });
+    $('wsNewBtn').addEventListener('click', function () { newWorkspaceUI(); });
     // 顶栏工作区名可点击切换工作区（对话界面优先，工作区为次要入口）
     $('wsLabel').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
     $('wsSwitchBtn').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
@@ -1817,6 +2255,18 @@ svg { flex: none; }
     $('tasksBtn').addEventListener('click', function () { closeDrawer(); showPane('paneTasks'); loadTasks(); });
     $('tasksBack').addEventListener('click', function () { showPane('paneChat'); });
     $('tasksRefresh').addEventListener('click', loadTasks);
+    // 目标
+    $('goalBtn').addEventListener('click', function () { closeDrawer(); showPane('paneGoal'); loadGoal(); });
+    $('goalBack').addEventListener('click', function () { showPane('paneChat'); });
+    $('goalNew').addEventListener('click', newGoal);
+    // 技能
+    $('skillBtn').addEventListener('click', function () { closeDrawer(); showPane('paneSkill'); loadSkills(); });
+    $('skillBack').addEventListener('click', function () { showPane('paneChat'); });
+    $('skillRefresh').addEventListener('click', loadSkills);
+    // 子代理
+    $('agentsBtn').addEventListener('click', function () { closeDrawer(); showPane('paneAgents'); loadAgents(); });
+    $('agentsBack').addEventListener('click', function () { showPane('paneChat'); });
+    $('agentsRefresh').addEventListener('click', loadAgents);
     $('settingsBtn').addEventListener('click', function () { closeDrawer(); renderSettings(); showPane('paneSettings'); });
     $('settingsBackBtn').addEventListener('click', function () { showPane('paneChat'); });
     $('wsBackBtn').addEventListener('click', function () { showPane('paneChat'); });
@@ -1851,6 +2301,10 @@ svg { flex: none; }
     $('modelBtn').addEventListener('click', openModelSheet);
     $('modelClose').addEventListener('click', function () { $('modelMask').classList.add('hidden'); });
     $('modelMask').addEventListener('click', function (e) { if (e.target === $('modelMask')) $('modelMask').classList.add('hidden'); });
+    // 模式切换
+    $('presetBtn').addEventListener('click', openPresetSheet);
+    $('presetClose').addEventListener('click', function () { $('presetMask').classList.add('hidden'); });
+    $('presetMask').addEventListener('click', function (e) { if (e.target === $('presetMask')) $('presetMask').classList.add('hidden'); });
     // 图片附件
     $('addBtn').addEventListener('click', function () { $('fileInput').click(); });
     $('fileInput').addEventListener('change', async function () {

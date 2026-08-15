@@ -182,6 +182,17 @@ svg { flex: none; }
 .list-item .t { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list-item .s { font-size: 11.5px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list-item .badge { font-size: 11px; color: var(--text-2); background: rgba(255,255,255,0.06); border-radius: 999px; padding: 2px 8px; flex: none; }
+.ws-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; margin-bottom: 8px; background: var(--bg-el); border: 1px solid var(--border); border-radius: var(--radius-sm); text-align: left; transition: background 0.1s; }
+.ws-item .ic { width: 34px; height: 34px; border-radius: 10px; background: rgba(255,255,255,0.06); display: grid; place-items: center; color: var(--text-2); flex: none; }
+.ws-item .main { flex: 1; min-width: 0; cursor: pointer; }
+.ws-item .t { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-item .s { font-size: 11.5px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-item .badge { font-size: 11px; color: var(--text-2); background: rgba(255,255,255,0.06); border-radius: 999px; padding: 2px 8px; flex: none; }
+.ws-item .ws-actions { display: flex; flex: none; gap: 4px; opacity: 0; transition: opacity 0.15s; }
+.ws-item:hover .ws-actions, .ws-item:focus-within .ws-actions { opacity: 1; }
+.ws-item .ws-act { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: var(--text-3); cursor: pointer; }
+.ws-item .ws-act:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.ws-item .ws-act.del:hover { background: var(--red-soft); color: var(--red); }
 .empty { text-align: center; color: var(--text-2); font-size: 13px; padding: 40px 20px; line-height: 1.8; }
 
 /* 对话头 */
@@ -575,6 +586,7 @@ svg { flex: none; }
           返回
         </button>
         <div class="info"><div class="t">工作区</div><div class="s" id="wsCount"></div></div>
+        <button class="btn ghost sm" id="wsNewBtn" type="button">新建</button>
       </div>
       <div class="scroll">
         <div class="sec-title"><span>选择工作区</span></div>
@@ -935,14 +947,48 @@ svg { flex: none; }
     $('wsEmpty').classList.toggle('hidden', state.ws.length > 0);
     state.ws.forEach(function (w, i) {
       var it = document.createElement('button');
-      it.type = 'button'; it.className = 'list-item';
+      it.type = 'button'; it.className = 'ws-item';
       it.innerHTML =
         '<span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></span>' +
         '<span class="main"><span class="t">' + esc(w.title || w.path) + '</span><span class="s">' + esc(w.path || '') + '</span></span>' +
-        '<span class="badge">' + (typeof w.sessionCount === 'number' ? w.sessionCount : '') + '</span>';
-      it.addEventListener('click', function () { selectWorkspace(i); });
+        '<span class="badge">' + (typeof w.sessionCount === 'number' ? w.sessionCount : '') + '</span>' +
+        '<span class="ws-actions"><span class="ws-act" data-act="rename" title="重命名">' + penSvg() + '</span>' +
+        '<span class="ws-act del" data-act="del" title="删除">' + trashSvg() + '</span></span>';
+      it.querySelector('.ws-actions').addEventListener('click', function (e) { e.stopPropagation(); });
+      var m = it.querySelector('.main');
+      m.addEventListener('click', function () { selectWorkspace(i); });
+      it.querySelector('[data-act="rename"]').addEventListener('click', function () { renameWorkspaceUI(w); });
+      it.querySelector('[data-act="del"]').addEventListener('click', function () { deleteWorkspaceUI(w); });
       box.appendChild(it);
     });
+  }
+  function penSvg() { return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>'; }
+  function trashSvg() { return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'; }
+  async function newWorkspaceUI() {
+    var p = prompt('新建工作区路径（电脑上的目录绝对路径）：');
+    if (!p || !p.trim()) return;
+    try {
+      var d = await api('/api/dsh-workspace-op', { method: 'POST', body: JSON.stringify({ action: 'create', path: p.trim() }), timeoutMs: 15000 });
+      if (d && d.ok) { toast('已创建工作区'); await loadWorkspaces(); }
+      else toast((d && d.error) || '创建失败', true);
+    } catch (e) { toast('失败：' + e.message, true); }
+  }
+  async function renameWorkspaceUI(w) {
+    var t = prompt('工作区标题：', w.title || '');
+    if (!t || !t.trim()) return;
+    try {
+      var d = await api('/api/dsh-workspace-op', { method: 'POST', body: JSON.stringify({ action: 'rename', workspaceId: w.workspaceId, title: t.trim() }), timeoutMs: 15000 });
+      if (d && d.ok) { toast('已重命名'); await loadWorkspaces(); }
+      else toast((d && d.error) || '失败', true);
+    } catch (e) { toast('失败：' + e.message, true); }
+  }
+  async function deleteWorkspaceUI(w) {
+    if (!confirm('删除工作区 "' + (w.title || w.path || '') + '"？（不动磁盘文件，仅移除工作区记录）')) return;
+    try {
+      var d = await api('/api/dsh-workspace-op', { method: 'POST', body: JSON.stringify({ action: 'delete', workspaceId: w.workspaceId }), timeoutMs: 15000 });
+      if (d && d.ok) { toast('已删除'); if (state.currentWs && state.currentWs.workspaceId === w.workspaceId) { state.currentWs = null; $('wsLabel').textContent = '未选择工作区'; } await loadWorkspaces(); }
+      else toast((d && d.error) || '失败', true);
+    } catch (e) { toast('失败：' + e.message, true); }
   }
   async function selectWorkspace(i) {
     var ws = state.ws[i];
@@ -2196,6 +2242,7 @@ svg { flex: none; }
     });
     $('connBtn').addEventListener('click', function () { closeDrawer(); showPane('paneConnect'); });
     $('wsBtn').addEventListener('click', function () { closeDrawer(); showPane('paneWorkspaces'); loadWorkspaces(); });
+    $('wsNewBtn').addEventListener('click', function () { newWorkspaceUI(); });
     // 顶栏工作区名可点击切换工作区（对话界面优先，工作区为次要入口）
     $('wsLabel').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
     $('wsSwitchBtn').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
