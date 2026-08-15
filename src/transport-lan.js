@@ -210,10 +210,12 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
       if (req.method === 'POST' && url.pathname === '/api/sessions') {
         if (!auth(req, res)) return;
         try {
+          const body = await readBody(req);
+          const agentPreset = String(body && body.agentPreset || '').trim() || undefined;
           const sess = typeof executor.createSession === 'function'
-            ? await executor.createSession()
+            ? await executor.createSession(agentPreset)
             : await executor.ensureSession();
-          sendJson(res, 200, { ok: true, sessionId: sess.sessionId });
+          sendJson(res, 200, { ok: true, sessionId: sess.sessionId, agentPreset: agentPreset });
         } catch (e) {
           sendJson(res, 500, { ok: false, error: '新建会话失败（Web API 后端不可用?）: ' + String(e) });
         }

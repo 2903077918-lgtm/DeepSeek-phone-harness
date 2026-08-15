@@ -189,8 +189,10 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
   }
 
   // 强制新建一个 Web API 会话并注册（POST /api/sessions 用）
-  async function createSession() {
-    const value = await fetchRpc('session.create', { cwd: ROOT_DIR, agentPreset: 'standard' });
+  // agentPreset：指定模式（standard/minimal/code/cordis 等，默认 standard）；随任务也可指定
+  async function createSession(agentPreset) {
+    const payload = { cwd: ROOT_DIR, agentPreset: String(agentPreset || 'standard') };
+    const value = await fetchRpc('session.create', payload);
     if (!value?.sessionId) throw new Error('session.create 未返回 sessionId');
     return register(value.sessionId);
   }

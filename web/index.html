@@ -405,6 +405,12 @@ svg { flex: none; }
 .model-pill:active { transform: scale(0.97); }
 .model-pill .mc-chev { color: var(--text-3); }
 .model-pill.preset-pill { color: var(--gold); border-color: rgba(201,162,39,0.4); background: rgba(201,162,39,0.08); }
+.model-pill.stat-pill { cursor: default; }
+.model-pill.perm-pill { color: var(--text-2); border-color: var(--border); background: rgba(255,255,255,0.04); }
+.model-pill.perm-pill.full { color: var(--green); border-color: rgba(107,191,89,0.4); background: rgba(107,191,89,0.08); }
+.model-pill.appr-pill { color: var(--red); border-color: rgba(216,79,79,0.4); background: rgba(216,79,79,0.06); }
+.model-pill.appr-pill.pending { color: #fff; border-color: var(--red); background: var(--red); animation: appr-blink 1.4s infinite; }
+@keyframes appr-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
 .sheet-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 60; display: flex; align-items: flex-end; }
 .sheet { width: 100%; max-height: 70vh; background: var(--bg-drawer); border-radius: 20px 20px 0 0; display: flex; flex-direction: column; overflow: hidden; }
 .sheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; }
@@ -632,6 +638,14 @@ svg { flex: none; }
               <span id="presetBtnLabel">标准模式</span>
               <svg class="mc-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
+            <span class="model-pill stat-pill perm-pill hidden" id="permPill" title="当前权限">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span id="permPillLabel">权限</span>
+            </span>
+            <span class="model-pill stat-pill appr-pill hidden" id="apprPill" title="审批状态">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+              <span id="apprPillLabel">需要批准</span>
+            </span>
             <span class="composer-models-hint" id="composerModelHint"></span>
           </div>
         </div>
@@ -831,6 +845,7 @@ svg { flex: none; }
     running: false,
     streamTimer: null,
     streamBase: 0,
+    continuePending: false,  // dsh-continue 进行中标志：pollStream 据此避免提前收尾流式
     approvals: [],        // 待审批/待回答 [{kind,approvalId,questionKey,sessionId,toolName,reason,questions}]
     questionDrafts: {},   // questionKey -> {selections:[], custom:''}（防重渲染丢选择）
     taskStat: { input: 0, output: 0, cacheRead: 0 }, // 当前任务 token 统计（最下方展示）
@@ -1176,34 +1191,106 @@ svg { flex: none; }
     if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
     return String(n);
   }
+  // 毫秒 → 紧凑耗时（"12m 30s"、"5s"）
+  function fmtDur(ms) {
+    if (!ms && ms !== 0) return '';
+    ms = Math.max(0, ms);
+    var s = Math.round(ms / 1000);
+    if (s < 60) return s + 's';
+    var m = Math.floor(s / 60), r = s % 60;
+    var h = Math.floor(m / 60); m = m % 60;
+    if (h > 0) return h + 'h' + (m ? ' ' + m + 'm' : '');
+    return m + 'm' + (r ? ' ' + r + 's' : '');
+  }
   function renderTaskStat() {
     var el = $('chatStat');
     if (!el) return;
     var s = state.taskStat;
-    // 会话级元数据：权限 / 进行中 / 上下文压力
-    var perm = '';
     var sess = state.currentSess;
-    if (sess && sess.permissions && sess.permissions.currentValue) {
-      var pv = sess.permissions.currentValue;
-      var pl = { 'read-only': '只读', 'workspace-write': '工作区写入', 'danger-full-access': '完全访问' }[pv] || pv;
-      perm = ' <span class="st-item"><span class="st-ic"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>' + esc(pl) + '</span>';
+    var run = (sess && sess.running) ? ' <span class="st-item st-run"><span class="st-ic"><span class="spin" style="width:10px;height:10px"></span></span>执行中</span>' : '';
+    // 会话级统计（DSH sessionStats / tokenUsage）
+    var sessParts = [];
+    if (sess) {
+      var st = sess.stats || null;
+      var tu = sess.tokenUsage || null;
+      if (st && (st.turns || st.steps)) {
+        var bits = [];
+        if (st.turns) bits.push(st.turns + ' 轮');
+        if (st.steps) bits.push(st.steps + ' 步');
+        sessParts.push('<span class="st-item">' + bits.join(' · ') + '</span>');
+        var tm = [];
+        if (st.llmMs) tm.push('LLM ' + fmtDur(st.llmMs));
+        if (st.toolMs) tm.push('工具 ' + fmtDur(st.toolMs));
+        if (tm.length) sessParts.push('<span class="st-item">' + tm.join(' · ') + '</span>');
+        if (st.ttftSteps && st.ttftMs) {
+          sessParts.push('<span class="st-item">首token ' + (st.ttftMs / st.ttftSteps / 1000).toFixed(1) + 's</span>');
+        }
+        if (st.decodeMs && st.decodeTokens) {
+          var tps = st.decodeTokens / (st.decodeMs / 1000);
+          sessParts.push('<span class="st-item">' + Math.round(tps) + ' tok/s</span>');
+        }
+      }
+      if (tu) {
+        var cR = tu.cacheReadTokens || 0, uI = tu.uncachedInputTokens || 0, oO = tu.outputTokens || 0;
+        var total = cR + uI;
+        var cachePct = total > 0 ? Math.round(cR / total * 100) : 0;
+        var cacheBit = [];
+        if (tu.cacheReadTokens) cacheBit.push(fmtTok(tu.cacheReadTokens) + ' 缓存');
+        if (total > 0) cacheBit.push(cachePct + '%');
+        if (cacheBit.length) sessParts.push('<span class="st-item st-cache"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:grid;place-items:center"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' + cacheBit.join(' · ') + '</span>');
+        if (uI || oO) {
+          var io = [];
+          if (uI) io.push('&#8593;' + fmtTok(uI));
+          if (oO) io.push('&#8595;' + fmtTok(oO));
+          sessParts.push('<span class="st-item">' + io.join(' ') + '</span>');
+        }
+      }
     }
+    // 任务级 token + 上下文压力（权限已搬到输入框胶囊）
     var pres = '';
     if (sess && sess.contextPressure && typeof sess.contextPressure === 'object') {
       var cp = sess.contextPressure;
       var pvuse = (typeof cp.current === 'number') ? cp.current : (typeof cp.percent === 'number' ? cp.percent : undefined);
-      if (pvuse != null) pres = ' <span class="st-item' + (pvuse >= 0.8 ? ' st-warn' : '') + '"><span class="st-ic"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>上下文 ' + Math.round(pvuse * 100) + '%</span>';
+      if (pvuse != null) pres = '<span class="st-item' + (pvuse >= 0.8 ? ' st-warn' : '') + '"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>上下文 ' + Math.round(pvuse * 100) + '%</span>';
     }
-    var run = (sess && sess.running) ? ' <span class="st-item st-run"><span class="st-ic"><span class="spin" style="width:10px;height:10px"></span></span>执行中</span>' : '';
-    var has = s.output || s.input || s.cacheRead || perm || pres || run;
-    if (!has) { el.classList.add('hidden'); el.textContent = ''; return; }
+    var all = [run].concat(sessParts).concat([
+      (s.cacheRead ? '<span class="st-item st-cache">' + fmtTok(s.cacheRead) + ' 缓存</span>' : ''),
+      (s.input ? '<span class="st-item">&#8593;' + fmtTok(s.input) + '</span>' : ''),
+      (s.output ? '<span class="st-item">&#8595;' + fmtTok(s.output) + '</span>' : ''),
+      pres,
+    ]).filter(Boolean);
+    if (!all.length) { el.classList.add('hidden'); el.textContent = ''; renderPermPill(); return; }
     el.classList.remove('hidden');
-    el.innerHTML =
-      run +
-      (s.cacheRead ? '<span class="st-item st-cache"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:grid;place-items:center"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' + fmtTok(s.cacheRead) + ' 缓存命中</span>' : '') +
-      '<span class="st-item"><span class="st-ic">&#8593;</span>输入 ' + fmtTok(s.input) + '</span>' +
-      '<span class="st-item"><span class="st-ic">&#8595;</span>输出 ' + fmtTok(s.output) + '</span>' +
-      pres + perm;
+    el.innerHTML = all.join(' ');
+    renderPermPill();
+  }
+  // 输入框胶囊：权限 + 审批状态（与模型/模式切换放一起）
+  var permNameMap = { 'read-only': '只读', 'workspace-write': '工作区写入', 'danger-full-access': '完全访问' };
+  function renderPermPill() {
+    var permEl = $('permPill');
+    var apprEl = $('apprPill');
+    var sess = state.currentSess;
+    // 权限：currentSess.permissions.currentValue
+    if (sess && sess.permissions && sess.permissions.currentValue) {
+      var pv = sess.permissions.currentValue;
+      var pl = permNameMap[pv] || pv;
+      $('permPillLabel').textContent = pl;
+      permEl.classList.remove('hidden');
+      permEl.classList.toggle('full', pv === 'danger-full-access');
+    } else {
+      permEl.classList.add('hidden');
+    }
+    // 审批：当前会话有待审批/提问 → 显示"需要批准"（高亮）
+    var mine = state.approvals.filter(function (a) {
+      return !sess || !a.sessionId || a.sessionId === sess.sessionId;
+    });
+    if (mine.length) {
+      $('apprPillLabel').textContent = mine.length + ' 项待批准';
+      apprEl.classList.remove('hidden');
+      apprEl.classList.add('pending');
+    } else {
+      apprEl.classList.add('hidden');
+    }
   }
   function msgEl(m) {
     if (m.kind === 'tool' || m.kind === 'tool-result') {
@@ -1445,17 +1532,55 @@ svg { flex: none; }
     });
     $('presetMask').classList.remove('hidden');
   }
+  // 切换模式：当前会话若已开始（preset 锁定）则自动用所选模式新建会话并打开
   async function selectPreset(id, name) {
-    if (!state.currentSess) { toast('请先打开一个会话', true); return; }
-    try {
-      var d = await api('/api/dsh-presets', { method: 'POST', body: JSON.stringify({ sessionId: state.currentSess.sessionId, agentPreset: id }), timeoutMs: 15000 });
-      if (d && d.ok) {
-        presetState.current = d.agentPreset || id;
-        renderPresetBtn();
-        toast('已切换模式：' + name);
+    if (!state.currentWs) { toast('请先选择工作区', true); return; }
+    // 1. 尝试对当前会话切换（仅未开始的会话可切）
+    var lockedError = null;
+    if (state.currentSess) {
+      try {
+        var d = await api('/api/dsh-presets', { method: 'POST', body: JSON.stringify({ sessionId: state.currentSess.sessionId, agentPreset: id }), timeoutMs: 15000 });
+        if (d && d.ok) {
+          presetState.current = d.agentPreset || id;
+          renderPresetBtn();
+          toast('已切换模式：' + name);
+          $('presetMask').classList.add('hidden');
+          return;
+        }
+        lockedError = (d && d.error) || null;
+      } catch (e) {
+        lockedError = e.message;
       }
-      $('presetMask').classList.add('hidden');
-    } catch (e) { toast('切换模式失败：' + e.message, true); }
+    }
+    // 2. 当前会话已开始 / 无当前会话：用所选模式新建一个会话
+    var needNew = !state.currentSess || lockedError || /locked|已开始|固定/i.test(String(lockedError || ''));
+    if (needNew) {
+      try {
+        var nd = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ agentPreset: id }), timeoutMs: 15000 });
+        if (nd && nd.ok && nd.sessionId) {
+          presetState.current = nd.agentPreset || id;
+          renderPresetBtn();
+          // 打开新会话（用该模式）
+          var sess = { sessionId: nd.sessionId, cwd: state.currentWs.path, title: name + '新对话', running: false, blank: true, agentPreset: id };
+          if (!state.sessions.some(function (x) { return x.sessionId === nd.sessionId; })) state.sessions.unshift(sess);
+          state.currentSess = sess;
+          state.msgs = [];
+          $('timeline').textContent = '';
+          $('chatTitle').textContent = name + '新对话';
+          $('chatSub').textContent = sess.cwd || '';
+          renderDrawer();
+          renderTaskStat();
+          $('presetMask').classList.add('hidden');
+          renderTimeline();
+          showPane('paneChat');
+          toast('已用「' + name + '」开始新对话');
+          $('input').focus();
+          return;
+        }
+        toast((nd && nd.error) || '新建会话失败', true);
+      } catch (e) { toast('新建会话失败：' + e.message, true); }
+    }
+    $('presetMask').classList.add('hidden');
   }
   function openModelSheet() {
     var list = $('modelList');
@@ -1567,6 +1692,7 @@ svg { flex: none; }
         var sid = state.currentSess.sessionId;
         var images = attach.length ? attach.slice() : undefined;
         state.streamBase = 0;
+        state.continuePending = true; // 任务进行中，pollStream 不得提前收尾
         api('/api/events?sessionId=' + enc(sid) + '&afterSeq=0', { timeoutMs: 6000 })
           .then(function (d0) { state.streamBase = (d0 && typeof d0.lastSeq === 'number') ? d0.lastSeq : 0; })
           .catch(function () { state.streamBase = 0; })
@@ -1580,6 +1706,7 @@ svg { flex: none; }
           timeoutMs: 60000,
         }).then(function (d) {
           // dsh-continue 返回最终结果：直接填充（流式可能因时序错过）
+          state.continuePending = false;
           attach = []; renderAttachRow();
           var r = (d && d.result) || {};
           if (r && r.stdout && !asstMsg.text) {
@@ -1603,6 +1730,7 @@ svg { flex: none; }
           }
           refreshSessions();
         }).catch(function (e) {
+          state.continuePending = false;
           if (state.streamTimer) { clearInterval(state.streamTimer); state.streamTimer = null; }
           state.running = false; updateRunUI();
           asstMsg.err = e.message; asstMsg.streaming = false;
@@ -1643,9 +1771,10 @@ svg { flex: none; }
       var items = (d && d.items) || [];
       if (typeof d.lastSeq === 'number') state.streamBase = Math.max(state.streamBase, d.lastSeq);
       if (!items.length) {
-        // 连续空闲判定结束（DSH 事件流无显式 done；历史出现结果即可视为完成）
+        // 连续空闲：只有当任务已确认结束（dsh-continue 已返回）且空闲足够时才收尾。
+        // 任务仍在执行（思考/工具阶段增量稀疏）时不得提前掐断流式。
         _streamIdle++;
-        if (_streamIdle >= 20 && state.streamBase > 0) finishStream(asstMsg);
+        if (!state.continuePending && _streamIdle >= 30 && state.streamBase > 0) finishStream(asstMsg);
         return;
       }
       _streamIdle = 0;
@@ -1742,6 +1871,7 @@ svg { flex: none; }
       state.approvals.forEach(function (a) { if (a.questionKey) live[a.questionKey] = 1; });
       Object.keys(state.questionDrafts).forEach(function (k) { if (!live[k]) delete state.questionDrafts[k]; });
       renderApprovals();
+      renderPermPill();
     } catch (e) { /* 网络抖动忽略 */ }
   }
   function renderApprovals() {
