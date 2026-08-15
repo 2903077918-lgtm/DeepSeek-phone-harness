@@ -844,6 +844,7 @@ svg { flex: none; }
     msgs: [],
     running: false,
     streamTimer: null,
+    statTimer: null,        // 统计条实时刷新（任务运行期周期拉最新 projections）
     streamBase: 0,
     continuePending: false,  // dsh-continue 进行中标志：pollStream 据此避免提前收尾流式
     approvals: [],        // 待审批/待回答 [{kind,approvalId,questionKey,sessionId,toolName,reason,questions}]
@@ -1669,12 +1670,25 @@ svg { flex: none; }
   }
 
   // ============ 发送 ============
-  async function sendMessage() {
+  async function sendMessage(interrupt) {
     var input = $('input');
     var text = input.value.trim();
     if (!text) return;
-    if (state.running) { toast('上一条任务仍在执行中', true); return; }
+    interrupt = !!interrupt;
+    if (state.running) {
+      // 运行中发送 = 打断当前任务并插入新消息（DSH steer 语义）
+      interrupt = true;
+      toast('已打断当前任务，插入新消息…');
+    }
     if (!state.currentWs) { toast('请先选择工作区', true); return; }
+
+    // 若打断：结束旧的流式助手消息，保留其已完成内容
+    if (interrupt) {
+      for (var k = state.msgs.length - 1; k >= 0; k--) {
+        if (state.msgs[k].streaming) { state.msgs[k].streaming = false; }
+      }
+      if (state.streamTimer) { clearInterval(state.streamTimer); state.streamTimer = null; }
+    }
 
     state.msgs.push({ role: 'user', text: text, time: new Date().toISOString() });
     input.value = '';
@@ -1688,7 +1702,7 @@ svg { flex: none; }
       renderTimeline();
 
       if (state.currentSess) {
-        // 已有会话：dsh-continue 后台执行；events 流式 + 响应结果双保险
+        // 已有会话：dsh-continue 后台执行（interrupt=打断插入）；events 流式 + 响应结果双保险
         var sid = state.currentSess.sessionId;
         var images = attach.length ? attach.slice() : undefined;
         state.streamBase = 0;
@@ -1702,7 +1716,7 @@ svg { flex: none; }
           });
         api('/api/dsh-continue', {
           method: 'POST',
-          body: JSON.stringify({ sessionId: sid, task: text, images: images }),
+          body: JSON.stringify({ sessionId: sid, task: text, images: images, interrupt: interrupt }),
           timeoutMs: 60000,
         }).then(function (d) {
           // dsh-continue 返回最终结果：直接填充（流式可能因时序错过）
@@ -1996,8 +2010,38 @@ svg { flex: none; }
     } catch (e) { toast('停止失败：' + e.message, true); }
   }
   function updateRunUI() {
+    // 运行中显示停止；发送按钮常显（运行中发送=打断插入新消息）
     $('stopBtn').classList.toggle('hidden', !state.running);
-    $('sendBtn').classList.toggle('hidden', state.running);
+    $('sendBtn').classList.remove('hidden');
+    // 任务运行：周期刷新统计条（会话级轮次/耗时/缓存/token 会随执行增加）
+    if (state.running && !state.statTimer) {
+      state.statTimer = setInterval(refreshStatLive, 3000);
+    } else if (!state.running && state.statTimer) {
+      clearInterval(state.statTimer); state.statTimer = null;
+    }
+  }
+  // 实时刷新当前会话的最新投影元数据（stats/tokenUsage/permissions/contextPressure/running）
+  async function refreshStatLive() {
+    if (!state.currentSess || !state.currentWs) return;
+    var targetId = state.currentSess.sessionId;
+    try {
+      var d = await api('/api/dsh-sessions?workspaceId=' + enc(state.currentWs.workspaceId), { timeoutMs: 6000 });
+      var items = (d && d.items) || [];
+      var it = items.find(function (x) { return x.sessionId === targetId; });
+      if (it) {
+        // 更新 currentSess 的元数据（保留现有 UI 状态）
+        state.currentSess.stats = it.stats;
+        state.currentSess.tokenUsage = it.tokenUsage;
+        state.currentSess.permissions = it.permissions;
+        state.currentSess.contextPressure = it.contextPressure;
+        state.currentSess.running = it.running;
+        // 同步抽屉里的会话（这样抽屉状态点也实时）
+        var ds = state.sessions.find(function (x) { return x.sessionId === targetId; });
+        if (ds) { ds.stats = it.stats; ds.tokenUsage = it.tokenUsage; ds.permissions = it.permissions; ds.contextPressure = it.contextPressure; ds.running = it.running; }
+        renderTaskStat();
+        renderPermPill();
+      }
+    } catch (e) { /* 网络抖动忽略 */ }
   }
   async function refreshSessions() {
     if (!state.currentWs) return;

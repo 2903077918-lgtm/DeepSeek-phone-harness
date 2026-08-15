@@ -307,8 +307,9 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         if (!task) { sendJson(res, 400, { ok: false, error: 'task 不能为空' }); return; }
         if (typeof executor.continueSession !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
         const images = Array.isArray(body.images) ? body.images.slice(0, 4) : undefined; // 最多 4 张
+        const interrupt = !!body.interrupt; // true → 先打断当前 turn 再插入新消息
         // 与 /api/exec 共用队列：同一时间只跑一个任务（DSH 会话单写）
-        await queue.enqueue(async () => executor.continueSession({ sessionId, task, images }))
+        await queue.enqueue(async () => executor.continueSession({ sessionId, task, images, interrupt }))
           .then((out) => {
             if (!out.ok) {
               const code = out.code === 'session-not-found' ? 404 : (out.code === 'bad-request' ? 400 : 502);

@@ -345,7 +345,8 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
     // POST /api/dsh-continue：对 DSH 已有会话继续发消息（不新建、不改注册表）。
     // 复用 runWebApi 的"记录提交前进度 + 只统计本轮增量"逻辑；存在性用一次轻量 session.list 检查。
     // images: [{mediaType, data, name?}] 随任务提交（图片附件）
-    async continueSession({ sessionId, task, images, onDelta } = {}) {
+    // interrupt: true → 先 session.cancel 结束当前 turn，再插入新消息（运行中追加信息/重定向）
+    async continueSession({ sessionId, task, images, interrupt, onDelta } = {}) {
       const sid = String(sessionId || '').trim();
       if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
       let known = false;
@@ -356,8 +357,13 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         return { ok: false, code: 'backend-unavailable', error: 'Web API 后端不可用: ' + String(e) };
       }
       if (!known) return { ok: false, code: 'session-not-found', error: '会话不存在: ' + sid };
+      if (interrupt) {
+        // 先打断当前 turn（保留上下文），再插入新消息
+        try { await fetchRpc('session.cancel', { sessionId: sid }); } catch { /* ignore */ }
+        await sleep(600);
+      }
       const result = await runWebApi(task, onDelta, sid, images);
-      return { ok: true, sessionId: sid, result };
+      return { ok: true, sessionId: sid, interrupt: !!interrupt, result };
     },
     // GET /api/dsh-history?sessionId=：转发 session.history 归一化为对话消息
     async getDshHistory(sessionId, limit) {
