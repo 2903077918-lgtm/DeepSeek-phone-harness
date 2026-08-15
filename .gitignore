@@ -1,0 +1,17 @@
+# ---- 密钥与本地配置（绝不入库：config.json 含访问令牌）----
+config.json
+*.local.json
+
+# ---- 运行时状态 ----
+history.json
+sessions.json
+
+# ---- 依赖与构建 ----
+node_modules/
+*.log
+.DS_Store
+
+# ---- Cloudflare ----
+cloud-relay/.dev.vars
+cloud-relay/.wrangler/
+.wrangler/

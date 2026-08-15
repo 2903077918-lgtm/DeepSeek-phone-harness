@@ -474,6 +474,103 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         sendJson(res, 200, { ok: true, selected: out.selected });
         return;
       }
+      // ---- Agent 预设（模式切换：标准/PTC/极简/创造）----
+      if (req.method === 'GET' && url.pathname === '/api/dsh-presets') {
+        if (!auth(req, res)) return;
+        if (typeof executor.listAgentPresets !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        try {
+          const out = await executor.listAgentPresets();
+          if (!out.ok) { sendJson(res, 502, { ok: false, error: out.error }); return; }
+          sendJson(res, 200, { ok: true, presets: out.presets, authorable: out.authorable });
+        } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); }
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/dsh-presets') {
+        if (!auth(req, res)) return;
+        if (typeof executor.selectAgentPreset !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const body = await readBody(req);
+        const out = await executor.selectAgentPreset({ sessionId: body.sessionId, agentPreset: body.agentPreset });
+        if (!out.ok) {
+          const code = out.code === 'bad-request' ? 400 : 502;
+          sendJson(res, code, { ok: false, error: out.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true, agentPreset: out.agentPreset });
+        return;
+      }
+      // ---- 会话分支（fork）----
+      if (req.method === 'POST' && url.pathname === '/api/dsh-fork') {
+        if (!auth(req, res)) return;
+        if (typeof executor.forkSession !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const body = await readBody(req);
+        const out = await executor.forkSession(body.sessionId);
+        if (!out.ok) {
+          const code = out.code === 'bad-request' ? 400 : 502;
+          sendJson(res, code, { ok: false, error: out.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true, sessionId: out.sessionId });
+        return;
+      }
+      // ---- 技能列表（skill.list，scoped 需 sessionId）----
+      if (req.method === 'GET' && url.pathname === '/api/dsh-skill') {
+        if (!auth(req, res)) return;
+        if (typeof executor.listSkills !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const sessionId = (url.searchParams.get('sessionId') || '').trim();
+        if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
+        try {
+          const out = await executor.listSkills(sessionId);
+          if (!out.ok) { sendJson(res, 502, { ok: false, error: out.error }); return; }
+          sendJson(res, 200, { ok: true, skills: out.skills });
+        } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); }
+        return;
+      }
+      // ---- 目标（goal）：GET 读状态 / POST 变更 ----
+      if (req.method === 'GET' && url.pathname === '/api/dsh-goals') {
+        if (!auth(req, res)) return;
+        if (typeof executor.getSessionGoal !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const sessionId = (url.searchParams.get('sessionId') || '').trim();
+        if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
+        try {
+          const out = await executor.getSessionGoal(sessionId);
+          if (!out.ok) { sendJson(res, 502, { ok: false, error: out.error }); return; }
+          sendJson(res, 200, { ok: true, goal: out.goal });
+        } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); }
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/dsh-goals') {
+        if (!auth(req, res)) return;
+        if (typeof executor.mutateGoal !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const body = await readBody(req);
+        const out = await executor.mutateGoal({ action: body.action, sessionId: body.sessionId, objective: body.objective, maxGoalRounds: body.maxGoalRounds, ref: body.ref });
+        if (!out.ok) {
+          const code = out.code === 'bad-request' ? 400 : 502;
+          sendJson(res, code, { ok: false, error: out.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true, ...{ ref: out.ref, cleared: out.cleared } });
+        return;
+      }
+      // ---- 工作区管理：POST /api/dsh-workspace-op {action: create|rename|delete, ...} ----
+      if (req.method === 'POST' && url.pathname === '/api/dsh-workspace-op') {
+        if (!auth(req, res)) return;
+        const body = await readBody(req);
+        const action = String(body.action || '');
+        let out;
+        try {
+          if (action === 'create') out = await executor.createWorkspace(body.path);
+          else if (action === 'rename') out = await executor.renameWorkspace(body.workspaceId, body.title);
+          else if (action === 'delete') out = await executor.deleteWorkspace(body.workspaceId);
+          else { sendJson(res, 400, { ok: false, error: 'action 只允许 create/rename/delete' }); return; }
+        } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); return; }
+        if (!out.ok) {
+          const code = out.code === 'bad-request' ? 400 : 502;
+          sendJson(res, code, { ok: false, error: out.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true, ...out });
+        return;
+      }
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: 'not found' }));
     } catch (e) {

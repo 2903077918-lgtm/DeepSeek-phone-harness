@@ -56,6 +56,15 @@ export function eventToStreamItem(ev) {
         text = chunk.name; subtype = 'tool'; kind = 'tool';
       } else if (ctype === 'block-start') {
         subtype = 'block-start'; text = ''; kind = 'other';
+      } else if (ctype === 'usage' && chunk.usage) {
+        // token 用量 / 缓存命中（cacheReadTokens）
+        const u = chunk.usage;
+        item.kind = 'usage';
+        item.usage = {
+          input: typeof u.inputTokens === 'number' ? u.inputTokens : undefined,
+          output: typeof u.outputTokens === 'number' ? u.outputTokens : undefined,
+          cacheRead: typeof u.cacheReadTokens === 'number' ? u.cacheReadTokens : undefined,
+        };
       }
     }
   } else if (type === 'assistant/message' || type === 'user/message') {

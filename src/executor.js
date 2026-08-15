@@ -307,14 +307,23 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
       const items = ((slValue && slValue.items) || []).map((s) => {
         const cwd = normPath(s.cwd);
         const inWorkspace = cwd && wsPaths.some((p) => cwd === p || cwd.startsWith(p + '/'));
+        const proj = (s.projections && s.projections.values) || {};
+        const stats = proj.sessionStats || {};
+        const tu = proj.tokenUsage || {};
         return {
           sessionId: s.sessionId,
           cwd: s.cwd,
-          title: (s.projections && s.projections.values && s.projections.values.title) || undefined,
+          title: proj.title || undefined,
           updatedAt: isoTime(s.updatedAt),
           running: !!s.running,
           blank: !!s.blank,
           ungrouped: !inWorkspace,
+          // 会话元数据（手机端状态标记 / 元数据展示用）
+          permissions: proj.permissions || undefined,
+          tokenUsage: Object.keys(tu).length ? tu : undefined,
+          contextPressure: proj.contextPressure || undefined,
+          goal: proj.goal || undefined,
+          stats: Object.keys(stats).length ? stats : undefined,
         };
       });
       if (withCount) {
@@ -386,6 +395,115 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         return { ok: false, code: 'backend-unavailable', error: 'session.rename 失败: ' + String(e) };
       }
     },
+    // POST /api/dsh-fork：分支会话（session.fork → 新 sessionId）
+    async forkSession(sessionId) {
+      const sid = String(sessionId || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      try {
+        const value = await fetchRpc('session.fork', { sessionId: sid });
+        if (!value || !value.sessionId) return { ok: false, error: 'session.fork 未返回 sessionId' };
+        const child = register(value.sessionId);   // 注册到 webapi 会话注册表，供后续复用
+        return { ok: true, sessionId: child.sessionId };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'session.fork 失败: ' + String(e) };
+      }
+    },
+    // GET /api/dsh-skill?sessionId=：skill.list → 电脑上的技能列表（skill.list 是 scoped RPC，需 sessionId）
+    async listSkills(sessionId) {
+      const sid = String(sessionId || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      try {
+        const value = await fetchRpc('skill.list', { sessionId: sid });
+        const skills = Array.isArray(value && value.skills) ? value.skills : [];
+        return { ok: true, skills: skills.map((sk) => ({
+          id: sk && sk.id, name: sk && sk.name, description: sk && sk.description,
+          detail: sk && sk.detail, kind: sk && sk.kind, broken: sk && sk.broken,
+        })) };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'skill.list 失败: ' + String(e) };
+      }
+    },
+    // ---- 目标（goal）：状态在 projections.values.goal；mutation 转发 goal.* ----
+    // GET /api/dsh-goals?sessionId=：读 projections 里的 goal 当前状态
+    async getSessionGoal(sessionId) {
+      const sid = String(sessionId || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      try {
+        const value = await fetchRpc('session.list', {});
+        const s = ((value && value.items) || []).find((x) => x.sessionId === sid);
+        const proj = (s && s.projections && s.projections.values && s.projections.values.goal) || null;
+        return { ok: true, goal: proj };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: '读取 goal 失败: ' + String(e) };
+      }
+    },
+    // POST /api/dsh-goals {action, sessionId, objective?, maxGoalRounds?, ref?}：goal.create|edit|pause|resume|complete|clear
+    async mutateGoal({ action, sessionId, objective, maxGoalRounds, ref } = {}) {
+      const sid = String(sessionId || '').trim();
+      const act = String(action || '');
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      const allowed = ['create', 'edit', 'pause', 'resume', 'complete', 'clear'];
+      if (!allowed.includes(act)) return { ok: false, code: 'bad-request', error: 'goal 动作只允许 ' + allowed.join('/') };
+      try {
+        if (act === 'create') {
+          const objectiveStr = String(objective || '').trim();
+          if (!objectiveStr) return { ok: false, code: 'bad-request', error: 'objective 不能为空' };
+          const p = { sessionId: sid, objective: objectiveStr };
+          if (Number.isInteger(maxGoalRounds) && maxGoalRounds > 0) p.maxGoalRounds = maxGoalRounds;
+          const v = await fetchRpc('goal.create', p);
+          return { ok: true, ref: v && v.ref };
+        } else if (act === 'clear') {
+          await fetchRpc('goal.clear', { sessionId: sid, ref: ref || {} });
+          return { ok: true, cleared: true };
+        } else {
+          // edit / pause / resume / complete 都用 ref
+          if (!ref || !ref.id) return { ok: false, code: 'bad-request', error: '缺少 ref 信息（目标不存在）' };
+          const p = { sessionId: sid, ref };
+          if (act === 'edit') {
+            const objectiveStr = String(objective || '').trim();
+            if (!objectiveStr) return { ok: false, code: 'bad-request', error: 'objective 不能为空' };
+            p.objective = objectiveStr;
+            if (Number.isInteger(maxGoalRounds) && maxGoalRounds > 0) p.maxGoalRounds = maxGoalRounds;
+          }
+          const v = await fetchRpc('goal.' + act, p);
+          return { ok: true, ref: (v && v.ref) || ref };
+        }
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'goal.' + act + ' 失败: ' + String(e) };
+      }
+    },
+    // ---- 工作区管理：workspace.create|rename|delete ----
+    async createWorkspace(wsPath) {
+      const p = String(wsPath || '').trim();
+      if (!p) return { ok: false, code: 'bad-request', error: '工作区路径不能为空' };
+      try {
+        const v = await fetchRpc('workspace.create', { path: p });
+        return { ok: true, workspace: v && v.workspace, created: !!(v && v.created) };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'workspace.create 失败: ' + String(e) };
+      }
+    },
+    async renameWorkspace(workspaceId, title) {
+      const w = String(workspaceId || '').trim();
+      const t = String(title || '').trim();
+      if (!w || !t) return { ok: false, code: 'bad-request', error: 'workspaceId/title 必填' };
+      try {
+        const v = await fetchRpc('workspace.rename', { workspaceId: w, title: t });
+        return { ok: true, workspace: v && v.workspace };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'workspace.rename 失败: ' + String(e) };
+      }
+    },
+    async deleteWorkspace(workspaceId) {
+      const w = String(workspaceId || '').trim();
+      if (!w) return { ok: false, code: 'bad-request', error: 'workspaceId 不能为空' };
+      try {
+        await fetchRpc('workspace.delete', { workspaceId: w });
+        return { ok: true, deleted: true };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'workspace.delete 失败: ' + String(e) };
+      }
+    },
     // GET /api/dsh-models?sessionId=：转发 session.models（当前模型 + 可选模型分组）
     async getSessionModels(sessionId) {
       const sid = String(sessionId || '').trim();
@@ -409,6 +527,29 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         return { ok: true, selected: value && value.selected };
       } catch (e) {
         return { ok: false, code: 'backend-unavailable', error: 'session.selectModel 失败: ' + String(e) };
+      }
+    },
+    // ---- Agent 预设（模式）：
+    // GET /api/dsh-presets：agentPreset.list → {ok, presets:[{id,name,description,isDefault,trust,broken}], authorable}
+    async listAgentPresets() {
+      try {
+        const value = await fetchRpc('agentPreset.list', {});
+        return { ok: true, presets: (value && value.presets) || [], authorable: !!(value && value.authorable) };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'agentPreset.list 失败: ' + String(e) };
+      }
+    },
+    // POST /api/dsh-presets {sessionId, agentPreset}：agentPreset.select 切换模式
+    async selectAgentPreset({ sessionId, agentPreset } = {}) {
+      const sid = String(sessionId || '').trim();
+      const pre = String(agentPreset || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      if (!pre) return { ok: false, code: 'bad-request', error: 'agentPreset 不能为空' };
+      try {
+        const value = await fetchRpc('agentPreset.select', { sessionId: sid, agentPreset: pre });
+        return { ok: true, agentPreset: (value && value.agentPreset) || pre };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'agentPreset.select 失败: ' + String(e) };
       }
     },
     // GET /api/agents?sessionId=：转发 subagent.list，归一化子代理列表

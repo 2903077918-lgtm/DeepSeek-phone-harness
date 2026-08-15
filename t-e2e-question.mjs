@@ -1,6 +1,6 @@
 // 端到端验证：提问卡 中继（question/requested → /api/approvals → 回答 → run 完成）
 // 用法：node t-e2e-question.mjs [task]
-const TOK = '6dd90dd965bc4c119d5f3acc852ce07270365361f3307bbc';
+const TOK = process.env.PH_TOKEN || '请设置环境变量 PH_TOKEN';
 const BASE = 'http://127.0.0.1:8788';
 const task = process.argv[2] || '请直接回复四个字：链路OK，不要提问，不要调用任何工具。';
 
