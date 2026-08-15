@@ -34,7 +34,8 @@ export function isoTime(t) {
 
 // 会话事件 → 流式条目（/api/events 增量用）
 // 提取规则：assistant/chunk 增量文本（text-delta / reasoning-delta / tool-call-delta / block-start）；
-//   assistant/message 与 user/message 的 content[].text；tool/call 的 name；
+//   assistant/message 与 user/message 的 content[].text；tool/call 的 name + arguments（含路径等关键参数）；
+//   tool/result 的 message.content 文本 + isError（供手机端渲染可展开的工具卡片）；
 //   其余事件保留 type 但无 text（前端可据此感知 turn/end 等状态）。
 export function eventToStreamItem(ev) {
   if (!ev || typeof ev !== 'object') return null;
@@ -65,17 +66,69 @@ export function eventToStreamItem(ev) {
     }
   } else if (type === 'tool/call') {
     if (data.name) { text = String(data.name); kind = 'tool'; }
+  } else if (type === 'tool/result') {
+    const msg = data.message;
+    if (msg) {
+      // 双层结构：message.content[].content[].text（tool-result 块）；callId 在 message.source.callId 或内层 toolCallId
+      let texts = [];
+      const collect = (arr) => {
+        for (const c of arr || []) {
+          if (!c || typeof c !== 'object') continue;
+          if (c.type === 'text' && typeof c.text === 'string') texts.push(c.text);
+          else if (Array.isArray(c.content)) collect(c.content);
+        }
+      };
+      collect(Array.isArray(msg.content) ? msg.content : []);
+      const t = texts.join('');
+      if (t) { text = t; kind = 'tool-result'; }
+      const callId = msg.callId || (msg.source && msg.source.callId);
+      if (callId) item.callId = String(callId);
+      if (msg.isError !== undefined) item.isError = !!msg.isError;
+      if (t) item.result = t;
+    }
   } else if (type === 'turn/end') {
     kind = 'done';
   }
   const item = { seq: Number(ev.seq) || 0, type, kind, time: isoTime(ev.time) };
   if (text !== undefined) item.text = text;
   if (subtype) item.subtype = subtype;
+  // 工具调用参数 / 结果详情（手机端工具卡片展开用）
+  if (type === 'tool/call') {
+    if (data.callId) item.callId = String(data.callId);
+    if (data.arguments) {
+      item.arguments = String(data.arguments);
+      item.argsSummary = summarizeArgs(data.arguments);
+    }
+  } else if (type === 'tool/result') {
+    if (data.message && data.message.callId) item.callId = String(data.message.callId);
+    if (data.message && data.message.isError) item.isError = !!data.message.isError;
+    if (text) item.result = text;
+  }
   return item;
 }
 
+// 从工具参数 JSON 提取一行摘要（优先路径类字段：write/edit 显示路径，command 显示命令）
+export function summarizeArgs(argsJson) {
+  let obj = null;
+  try { obj = JSON.parse(argsJson); } catch { /* 非 JSON 直接截断 */ }
+  const pick = (keys) => {
+    if (!obj || typeof obj !== 'object') return undefined;
+    for (const k of keys) {
+      const v = obj[k];
+      if (v === undefined || v === null) continue;
+      if (typeof v === 'string' && v.trim()) return v.trim();
+      if (typeof v === 'number') return String(v);
+    }
+    return undefined;
+  };
+  const s = pick(['path', 'file_path', 'filePath', 'file', 'cwd', 'directory', 'dir', 'src', 'dest', 'target', 'command', 'name', 'url', 'text', 'query'])
+    || (obj && typeof obj === 'object' ? JSON.stringify(obj) : String(argsJson));
+  return String(s).length > 120 ? String(s).slice(0, 117) + '…' : String(s);
+}
+
 // session.history events → 对话消息数组（/api/dsh-history 用）
-// 过滤 DSH 注入的 <system-reminder>（工作区指令）与 <runtime-context> 系统消息，避免污染对话视图
+// 过滤 DSH 注入的 <system-reminder>（工作区指令）与 <runtime-context> 系统消息，避免污染对话视图；
+// 工具调用携带 callId/参数摘要，工具结果回填到对应调用（手机端渲染可展开工具卡片）
 export function historyToMessages(events) {
   const items = [];
   const isNoise = (text) => {
@@ -96,7 +149,42 @@ export function historyToMessages(events) {
         if (text) items.push({ role: 'assistant', text, time: isoTime(e.time) });
       }
     } else if (e.type === 'tool/call' && data.name) {
-      items.push({ role: 'tool', text: String(data.name), time: isoTime(e.time) });
+      const entry = {
+        role: 'tool',
+        text: String(data.name),
+        callId: data.callId ? String(data.callId) : undefined,
+        time: isoTime(e.time),
+      };
+      if (data.arguments) {
+        entry.arguments = String(data.arguments);
+        entry.argsSummary = summarizeArgs(data.arguments);
+      }
+      items.push(entry);
+    } else if (e.type === 'tool/result') {
+      // 回填到对应 tool/call 条目（若无则追加结果行）；content 为双层 tool-result 块
+      const msg = data.message || {};
+      const callId = msg.callId || (msg.source && msg.source.callId) || undefined;
+      let texts = [];
+      const collect = (arr) => {
+        for (const c of arr || []) {
+          if (!c || typeof c !== 'object') continue;
+          if (c.type === 'text' && typeof c.text === 'string') texts.push(c.text);
+          else if (Array.isArray(c.content)) collect(c.content);
+        }
+      };
+      collect(Array.isArray(msg.content) ? msg.content : []);
+      const result = texts.join('');
+      const isError = !!msg.isError;
+      if (callId) {
+        const target = items.filter((x) => x.role === 'tool' && x.callId === callId);
+        if (target.length) {
+          const t = target[target.length - 1];
+          t.result = result;
+          t.isError = isError;
+          continue;
+        }
+      }
+      if (result) items.push({ role: 'tool-result', text: result, isError, time: isoTime(e.time) });
     }
   }
   return items;

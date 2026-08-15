@@ -244,6 +244,29 @@ svg { flex: none; }
 }
 .tool-line.run { color: #C6D2FF; }
 .tool-line.done { color: var(--green); }
+/* 工具卡片（对标 DSH Web GUI：图标 + 状态 + 路径参数 + 可展开详情） */
+.tool-stack { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.tool-card { border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.03); overflow: hidden; }
+.tool-card.run { border-color: rgba(62,150,255,0.45); }
+.tool-card.err { border-color: rgba(216,79,79,0.5); }
+.tool-card .tc-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; user-select: none; }
+.tool-card .tc-ic { flex: none; color: var(--blue-2); display: grid; place-items: center; }
+.tool-card.done .tc-ic { color: var(--text-3); }
+.tool-card.err .tc-ic { color: var(--red); }
+.tool-card .tc-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tool-card .tc-status { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text-2); }
+.tool-card .tc-status .tc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.tool-card.err .tc-status .tc-dot { background: var(--red); }
+.tool-card .tc-status.run { color: var(--blue-2); }
+.tool-card .tc-args { padding: 0 10px 8px 34px; font-family: var(--mono); font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tool-card .tc-detail { display: none; border-top: 1px solid var(--border); padding: 6px 10px 10px; }
+.tool-card.open .tc-detail { display: block; }
+.tool-card .tc-chev { flex: none; color: var(--text-3); transition: transform 0.15s; }
+.tool-card.open .tc-chev { transform: rotate(180deg); }
+.tool-card .tc-sec { font-size: 10.5px; color: var(--text-2); margin: 6px 0 3px; }
+.tool-card .tc-detail pre { font-family: var(--mono); font-size: 11px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow: auto; background: rgba(255,255,255,0.04); border-radius: 6px; padding: 6px 8px; margin: 0; }
+.tool-card.err .tc-detail pre { color: var(--red); }
+.tool-card-wrap { display: block; }
 .tool-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
 .tool-stack { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
 .stream-cursor {
@@ -932,7 +955,11 @@ svg { flex: none; }
       var d = await api('/api/dsh-history?sessionId=' + enc(sess.sessionId), { timeoutMs: 10000 });
       var items = (d && d.items) || [];
       state.msgs = items.map(function (it) {
-        return { role: it.role === 'user' ? 'user' : 'asst', text: it.text || '', time: it.time || it.at || '', kind: it.role };
+        var m = { role: it.role === 'user' ? 'user' : 'asst', text: it.text || '', time: it.time || it.at || '', kind: it.role };
+        if (it.role === 'tool' || it.role === 'tool-result') {
+          m.argsSummary = it.argsSummary; m.arguments = it.arguments; m.result = it.result; m.isError = it.isError; m.callId = it.callId;
+        }
+        return m;
       });
       // 合并进行中的消息（用户新输入 + 流式助手）
       if (preserveRunning) {
@@ -967,11 +994,8 @@ svg { flex: none; }
     tl.scrollTop = tl.scrollHeight;
   }
   function msgEl(m) {
-    if (m.kind === 'tool') {
-      var tw = document.createElement('div');
-      tw.className = 'tool-line' + (m.ok === false ? ' run' : ' done');
-      tw.innerHTML = (m.ok === false ? '<span class="spin"></span>' : '<span class="tool-dot"></span>') + ' ' + esc(m.text);
-      return tw;
+    if (m.kind === 'tool' || m.kind === 'tool-result') {
+      return toolCardEl({ name: m.kind === 'tool-result' ? '工具结果' : (m.text || '工具'), argsSummary: m.argsSummary, result: m.result, isError: m.isError, running: false, arguments: m.arguments, forceOpen: m.kind === 'tool-result' });
     }
     if (m.role === 'user') {
       var uw = document.createElement('div');
@@ -997,9 +1021,7 @@ svg { flex: none; }
     var toolsHtml = '';
     if (m.tools && m.tools.length) {
       toolsHtml = '<div class="tool-stack">' + m.tools.map(function (t) {
-        return '<span class="tool-line done"><span class="tool-dot"></span>' +
-          '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>' +
-          esc(t.name) + '</span>';
+        return '<span class="tool-card-wrap">' + toolCardHtml(t, m.streaming) + '</span>';
       }).join('') + '</div>';
     }
     aw.innerHTML =
@@ -1016,6 +1038,54 @@ svg { flex: none; }
       copyText(m.text || '');
     });
     return aw;
+  }
+  // ---- 工具卡片（对标 DSH：图标 + 状态 + 路径参数 + 展开详情） ----
+  function toolCardHtml(t, streaming) {
+    var state = t.running ? 'run' : (t.isError ? 'err' : 'done');
+    var statusHtml = t.running
+      ? '<span class="tc-status run"><span class="spin"></span>执行中</span>'
+      : '<span class="tc-status"><span class="tc-dot"></span>' + (t.isError ? '失败' : '完成') + '</span>';
+    var args = t.argsSummary ? '<div class="tc-args">' + esc(t.argsSummary) + '</div>' : '';
+    var detail = '';
+    if (t.arguments || t.result) {
+      detail = '<div class="tc-detail">' +
+        (t.arguments ? '<div class="tc-sec">参数</div><pre>' + esc(t.arguments) + '</pre>' : '') +
+        (t.result ? '<div class="tc-sec">' + (t.isError ? '错误' : '结果') + '</div><pre>' + esc(t.result.slice(0, 3000)) + '</pre>' : '') +
+        '</div>';
+    }
+    return '<div class="tool-card ' + state + '">' +
+      '<div class="tc-head">' +
+      '<span class="tc-ic">' + toolIcon(t.name) + '</span>' +
+      '<span class="tc-name">' + esc(t.name) + '</span>' +
+      statusHtml +
+      (detail ? '<svg class="tc-chev" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' : '') +
+      '</div>' + args + detail + '</div>';
+  }
+  function toolCardEl(m) {
+    var el = document.createElement('div');
+    el.className = 'tool-card-wrap';
+    el.innerHTML = toolCardHtml(m, false);
+    return el;
+  }
+  function toggleToolCard(card) { card.classList.toggle('open'); }
+  function toolIcon(name) {
+    var n = String(name || '').toLowerCase();
+    var W = ' width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
+    if (/(write|edit|str-replace|replace|patch|create|insert|update)/.test(n))
+      return '<svg viewBox="0 0 24 24"' + W + '><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
+    if (/(pwsh|bash|shell|exec|terminal|command|cmd|run|kill)/.test(n))
+      return '<svg viewBox="0 0 24 24"' + W + '><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+    if (/(web|search|fetch|http|url|browse)/.test(n))
+      return '<svg viewBox="0 0 24 24"' + W + '><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+    if (/(subagent|agent|fork|ralph|workflow|delegat)/.test(n))
+      return '<svg viewBox="0 0 24 24"' + W + '><circle cx="9" cy="7" r="4"/><path d="M1 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/><path d="M17 8a4 4 0 0 1 0 8"/></svg>';
+    if (/(ask|question|confirm)/.test(n))
+      return '<svg viewBox="0 0 24 24"' + W + '><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    if (/(read|glob|grep|ls|list|find|view|open|cat|head|tail|stat|file)/.test(n))
+      return '<svg viewBox="0 0 24 24"' + W + '><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+    if (/(todo|goal|plan|task)/.test(n))
+      return '<svg viewBox="0 0 24 24"' + W + '><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
+    return '<svg viewBox="0 0 24 24"' + W + '><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
   }
   function copyText(t) {
     var ta = document.createElement('textarea');
@@ -1286,11 +1356,31 @@ svg { flex: none; }
           asstMsg.thinking = (asstMsg.thinking || '') + (ev.text || '');
           if (asstMsg.thinking.length > 6000) asstMsg.thinking = asstMsg.thinking.slice(-6000);
         }
-        else if (type === 'tool/call' || (kind === 'tool' && type.indexOf('tool') > -1)) {
+        else if (type === 'tool/call') {
+          // 工具调用：进入"执行中"状态，带 callId 供 tool/result 配对
           asstMsg.tools = asstMsg.tools || [];
-          // 同名工具去重（chunk 流会重复推送 tool-call-delta）
-          if (!asstMsg.tools.some(function (t) { return t.name === ev.text; })) {
-            asstMsg.tools.push({ name: ev.text || '工具', done: true });
+          var tid = ev.callId || ('tc-' + asstMsg.tools.length);
+          var existing = asstMsg.tools.filter(function (t) { return t.callId === tid; });
+          if (existing.length) {
+            var ex = existing[existing.length - 1];
+            if (!ex.argsSummary && ev.argsSummary) ex.argsSummary = ev.argsSummary;
+            if (!ex.arguments && ev.arguments) ex.arguments = ev.arguments;
+          } else {
+            asstMsg.tools.push({ name: ev.text || '工具', callId: tid, argsSummary: ev.argsSummary, arguments: ev.arguments, running: true });
+          }
+        }
+        else if (type === 'tool/result') {
+          // 工具结果：配对 callId → 转"完成/失败"
+          asstMsg.tools = asstMsg.tools || [];
+          var rid = ev.callId;
+          if (rid) {
+            var hit = asstMsg.tools.filter(function (t) { return t.callId === rid; });
+            if (hit.length) {
+              var h = hit[hit.length - 1];
+              h.running = false; h.result = ev.result; h.isError = ev.isError;
+            } else {
+              asstMsg.tools.push({ name: ev.text ? '工具结果' : '工具', callId: rid, result: ev.result, isError: ev.isError, running: false });
+            }
           }
         }
       });
@@ -1310,7 +1400,11 @@ svg { flex: none; }
         .then(function (d) {
           var items = (d && d.items) || [];
           state.msgs = items.map(function (it) {
-            return { role: it.role === 'user' ? 'user' : 'asst', text: it.text || '', time: it.time || it.at || '', kind: it.role };
+            var m = { role: it.role === 'user' ? 'user' : 'asst', text: it.text || '', time: it.time || it.at || '', kind: it.role };
+            if (it.role === 'tool' || it.role === 'tool-result') {
+              m.argsSummary = it.argsSummary; m.arguments = it.arguments; m.result = it.result; m.isError = it.isError; m.callId = it.callId;
+            }
+            return m;
           });
           renderTimeline();
           toast('任务完成');
@@ -1758,6 +1852,12 @@ svg { flex: none; }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
     });
     $('input').addEventListener('input', function () { autoGrow($('input')); });
+    // 工具卡片展开（事件委托：内联 onclick 在 IIFE 作用域外不可用）
+    $('timeline').addEventListener('click', function (e) {
+      var t = e.target;
+      while (t && t !== this && !(t.classList && t.classList.contains('tool-card'))) t = t.parentElement;
+      if (t && t !== this && t.classList.contains('tool-card')) t.classList.toggle('open');
+    });
 
     // 手机：抽屉按钮在顶栏；桌面宽屏：抽屉常驻
     if (window.innerWidth < 900) {
