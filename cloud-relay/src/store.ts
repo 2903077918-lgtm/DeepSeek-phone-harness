@@ -7,6 +7,11 @@ export async function getDeviceByAgentId(db: SupabaseClient, agentId: string): P
   return db.selectOne<Device>('devices', { agent_id: `eq.${agentId}` });
 }
 
+/** 按用户列出已绑定设备（手机端设备列表用） */
+export async function listDevicesByUser(db: SupabaseClient, userId: string): Promise<Device[]> {
+  return db.selectAll<Device>('devices', { user_id: `eq.${userId}`, order: 'last_seen_at.desc', limit: '50' });
+}
+
 // 把"agent_id 或设备 UUID"统一解析成 devices.id（UUID）。传入已是 UUID 则原样返回；
 // 否则按 agent_id 查表。供所有写 uuid 外键（pair_codes/audit_log/tasks）的方法使用。
 export async function resolveDeviceUuid(db: SupabaseClient, idOrAgentId: string): Promise<string | null> {

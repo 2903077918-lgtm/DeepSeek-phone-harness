@@ -17,7 +17,7 @@ import { createSupabase } from './supabase.js';
 import {
   upsertDevice, setDeviceStatus, createTask, updateTaskStatus, finishTask, appendTaskEvent, appendAudit,
   createUser, loginUser, generatePairCode, createPairCode, pairDeviceWithCode,
-  listTasks, getTaskById, listTaskEvents, getDeviceByAgentId,
+  listTasks, getTaskById, listTaskEvents, getDeviceByAgentId, listDevicesByUser,
 } from './store.js';
 import type { Env } from './bindings.js';
 
@@ -130,6 +130,16 @@ export default {
     }
 
     // ---- 设备查询 / 紧急停止 ----
+    // 设备列表（手机端：按用户列出已绑定设备）
+    if (method === 'GET' && pathname === '/v1/devices') {
+      const userId = (url.searchParams.get('userId') || '').trim();
+      if (!userId) return json({ error: 'missing userId' }, 400);
+      const items = await listDevicesByUser(db, userId);
+      return json({ ok: true, items: items.map((d) => ({
+        agentId: d.agent_id, status: d.status, name: d.name, os: d.os,
+        lastSeen: d.last_seen_at, bound: !!d.user_id,
+      })) }, 200, origin);
+    }
     if (method === 'GET' && pathname.startsWith('/v1/devices/')) {
       const agentId = decodeURIComponent(pathname.slice('/v1/devices/'.length));
       if (!agentId) return json({ error: 'missing agentId' }, 400);
