@@ -85,6 +85,14 @@ svg { flex: none; }
 .drawer-foot { padding: 10px; border-top: 1px solid rgba(255,255,255,0.08); }
 .drawer-foot .item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 9px; color: var(--text-2); font-size: 13px; }
 .drawer-foot .item:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+.drawer-search {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 10px 8px; padding: 8px 12px;
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+  border-radius: 9px; color: var(--text-2);
+}
+.drawer-search input { flex: 1; min-width: 0; background: none; border: none; color: var(--text); font-size: 13px; outline: none; }
+.drawer-search input::placeholder { color: var(--text-3); }
 
 /* 遮罩（手机抽屉） */
 .scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.28); z-index: 35; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
@@ -217,6 +225,8 @@ svg { flex: none; }
 .asst-body a { color: var(--blue-2); text-decoration: none; }
 .msg .meta { font-size: 10.5px; color: var(--text-3); margin-top: 4px; }
 .msg.user .meta { text-align: right; }
+.copy-btn { font-size: 10.5px; color: var(--text-3); text-decoration: underline; padding: 0; }
+.copy-btn:hover { color: var(--text-2); }
 .tool-line {
   display: inline-flex; align-items: center; gap: 7px;
   font-size: 11.5px; padding: 4px 10px; border-radius: 999px;
@@ -312,6 +322,10 @@ svg { flex: none; }
       </button>
     </div>
     <div class="drawer-list" id="drawerList"></div>
+    <div class="drawer-search">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="sessSearch" type="search" placeholder="搜索会话" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
     <div class="drawer-foot">
       <button class="item" id="wsBtn" type="button">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
@@ -376,8 +390,15 @@ svg { flex: none; }
 
     <!-- 工作区页 -->
     <div class="pane hidden" id="paneWorkspaces">
+      <div class="chat-head">
+        <button class="btn ghost sm" id="wsBackBtn" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          返回
+        </button>
+        <div class="info"><div class="t">工作区</div><div class="s" id="wsCount"></div></div>
+      </div>
       <div class="scroll">
-        <div class="sec-title"><span>工作区</span><span class="cnt" id="wsCount"></span></div>
+        <div class="sec-title"><span>选择工作区</span></div>
         <div id="wsList"></div>
         <div class="empty hidden" id="wsEmpty">暂无工作区</div>
       </div>
@@ -398,6 +419,9 @@ svg { flex: none; }
       <footer class="inputbar">
         <div class="composer">
           <textarea id="input" rows="1" enterkeyhint="send" placeholder="输入任务，交给电脑上的 DSH…" autocomplete="off" autocapitalize="sentences" autocorrect="off" spellcheck="false"></textarea>
+          <button class="send hidden" id="stopBtn" type="button" aria-label="停止" title="停止任务">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          </button>
           <button class="send" id="sendBtn" type="button" aria-label="发送"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
         </div>
       </footer>
@@ -427,6 +451,13 @@ svg { flex: none; }
 
     <!-- 设置页 -->
     <div class="pane hidden" id="paneSettings">
+      <div class="chat-head">
+        <button class="btn ghost sm" id="settingsBackBtn" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          返回
+        </button>
+        <div class="info"><div class="t">设置</div></div>
+      </div>
       <div class="scroll">
         <div class="sec-title"><span>设置</span></div>
         <div class="settings-card">
@@ -484,6 +515,9 @@ svg { flex: none; }
     running: false,
     streamTimer: null,
     streamBase: 0,
+    approvals: [],        // 待审批 [{approvalId,sessionId,toolName,reason}]
+    apprTimer: null,
+    sessQuery: '',
   };
 
   function toast(msg, isErr) {
@@ -550,6 +584,7 @@ svg { flex: none; }
       $('setMachine').textContent = st.agent || '-';
       $('setVersion').textContent = 'v' + (st.version || '-');
       renderSettings();
+      startApprovalPoll();
       await loadWorkspaces();
       showPane('paneWorkspaces');
       renderDrawer();
@@ -618,15 +653,20 @@ svg { flex: none; }
       return;
     }
     $('wsBtnLabel').textContent = state.currentWs.title || state.currentWs.path;
-    if (!state.sessions.length) {
+    var q = state.sessQuery.toLowerCase();
+    var sessions = state.sessions.filter(function (s) {
+      if (!q) return true;
+      return String(s.title || s.cwd || '').toLowerCase().indexOf(q) > -1;
+    });
+    if (!sessions.length) {
       var e2 = document.createElement('div');
       e2.className = 'empty';
       e2.style.padding = '30px 10px';
-      e2.textContent = '暂无会话';
+      e2.textContent = q ? '无匹配会话' : '暂无会话';
       list.appendChild(e2);
       return;
     }
-    state.sessions.forEach(function (s) {
+    sessions.forEach(function (s) {
       var it = document.createElement('button');
       it.type = 'button';
       it.className = 'drawer-item' + (state.currentSess && s.sessionId === state.currentSess.sessionId ? ' active' : '');
@@ -676,6 +716,7 @@ svg { flex: none; }
     }
     state.msgs.forEach(function (m) { tl.appendChild(msgEl(m)); });
     if (state.running) tl.appendChild(pendingEl());
+    renderApprovals();
     tl.scrollTop = tl.scrollHeight;
   }
   function msgEl(m) {
@@ -688,7 +729,12 @@ svg { flex: none; }
     if (m.role === 'user') {
       var uw = document.createElement('div');
       uw.className = 'msg user';
-      uw.innerHTML = '<div class="bubble">' + esc(m.text) + '</div>' + (m.time ? '<div class="meta">' + esc(fmtTime(m.time)) + '</div>' : '');
+      uw.innerHTML = '<div class="bubble">' + esc(m.text) + '</div>' +
+        '<div class="meta">' + (m.time ? esc(fmtTime(m.time)) + ' · ' : '') + '<button class="copy-btn" data-copy="' + esc(m.text) + '" type="button">复制</button></div>';
+      uw.querySelector('.copy-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        copyText(m.text);
+      });
       return uw;
     }
     var aw = document.createElement('div');
@@ -697,8 +743,20 @@ svg { flex: none; }
       '<div class="avatar">DSH</div>' +
       '<div class="bubble"><div class="asst-label">deepseekharness</div>' +
       '<div class="asst-body">' + renderMarkdown(m.text || (m.err ? '错误：' + m.err : '')) + '</div>' +
-      (m.time ? '<div class="meta">' + esc(fmtTime(m.time)) + '</div>' : '') + '</div>';
+      '<div class="meta">' + (m.time ? esc(fmtTime(m.time)) + ' · ' : '') + '<button class="copy-btn" data-copy="' + esc(m.text || '') + '" type="button">复制</button></div></div>';
+    aw.querySelector('.copy-btn').addEventListener('click', function (e) {
+      e.stopPropagation();
+      copyText(m.text || '');
+    });
     return aw;
+  }
+  function copyText(t) {
+    var ta = document.createElement('textarea');
+    ta.value = t;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast('已复制'); } catch (e) { toast('复制失败', true); }
+    document.body.removeChild(ta);
   }
   function pendingEl() {
     var p = document.createElement('div');
@@ -756,6 +814,7 @@ svg { flex: none; }
     state.msgs.push({ role: 'user', text: text, time: new Date().toISOString() });
     input.value = '';
     state.running = true;
+    updateRunUI();
     renderTimeline();
 
     var body = { task: text };
@@ -775,16 +834,85 @@ svg { flex: none; }
       }
       state.msgs.push(asstMsg);
       state.running = false;
+      updateRunUI();
       renderTimeline();
       refreshSessions();
     } catch (e) {
       state.running = false;
+      updateRunUI();
       appendMsg('asst', '', { plain: true, err: e.message });
       renderTimeline();
       toast('发送失败：' + e.message, true);
     }
   }
   function firstLine(s, n) { var t = String(s || '').split('\n')[0].trim(); return t.length > n ? t.slice(0, n) + '…' : t; }
+
+  // ============ 审批（codex-relay approvalRequest 卡） ============
+  function startApprovalPoll() {
+    if (state.apprTimer) return;
+    state.apprTimer = setInterval(pollApprovals, 3000);
+  }
+  function stopApprovalPoll() { if (state.apprTimer) { clearInterval(state.apprTimer); state.apprTimer = null; } }
+  async function pollApprovals() {
+    if (!state.base || !state.token) return;
+    try {
+      var d = await api('/api/approvals', { timeoutMs: 5000 });
+      state.approvals = (d && d.items) || [];
+      renderApprovals();
+    } catch (e) { /* 网络抖动忽略 */ }
+  }
+  function renderApprovals() {
+    // 时间线里渲染待审批卡（codex-relay approvalRequest 卡片样式）
+    var tl = $('timeline');
+    if (!tl) return;
+    // 移除旧的审批卡（只清当前动态加的，不碰历史消息）
+    tl.querySelectorAll('.appr-card').forEach(function (c) { c.remove(); });
+    if (!state.approvals.length) return;
+    // 只显示与当前会话相关的审批
+    var mine = state.approvals.filter(function (a) {
+      return !state.currentSess || !a.sessionId || a.sessionId === state.currentSess.sessionId;
+    });
+    if (!mine.length) return;
+    mine.forEach(function (a) {
+      var card = document.createElement('div');
+      card.className = 'appr-card';
+      card.innerHTML =
+        '<div class="t"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> 需要授权</div>' +
+        '<div class="r">' + esc(a.reason || a.toolName || '该操作需要你的允许') + '</div>' +
+        '<div class="row">' +
+        '<button class="btn" data-act="allow">允许一次</button>' +
+        '<button class="btn ghost" data-act="reject">拒绝</button>' +
+        '</div>';
+      card.querySelector('[data-act="allow"]').addEventListener('click', function () { respondApproval(a, 'allowed-once'); });
+      card.querySelector('[data-act="reject"]').addEventListener('click', function () { respondApproval(a, 'rejected'); });
+      tl.appendChild(card);
+      tl.scrollTop = tl.scrollHeight;
+    });
+  }
+  async function respondApproval(a, outcome) {
+    try {
+      await api('/api/approvals', { method: 'POST', body: JSON.stringify({ approvalId: a.approvalId, outcome: outcome }) });
+      toast(outcome === 'allowed-once' ? '已允许' : '已拒绝');
+      await pollApprovals();
+    } catch (e) { toast('操作失败：' + e.message, true); }
+  }
+
+  // ============ 停止任务 ============
+  async function stopTask() {
+    if (!state.running) return;
+    try {
+      await api('/api/cancel', { method: 'POST', body: JSON.stringify({}), timeoutMs: 5000 });
+      toast('正在停止…');
+      if (state.streamTimer) { clearInterval(state.streamTimer); state.streamTimer = null; }
+      state.running = false;
+      updateRunUI();
+      appendMsg('asst', '任务已停止', { plain: true });
+    } catch (e) { toast('停止失败：' + e.message, true); }
+  }
+  function updateRunUI() {
+    $('stopBtn').classList.toggle('hidden', !state.running);
+    $('sendBtn').classList.toggle('hidden', state.running);
+  }
   async function refreshSessions() {
     if (!state.currentWs) return;
     try {
@@ -877,6 +1005,8 @@ svg { flex: none; }
     $('wsSwitchBtn').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
     $('filesBtn').addEventListener('click', function () { closeDrawer(); openFileBrowser(null); });
     $('settingsBtn').addEventListener('click', function () { closeDrawer(); renderSettings(); showPane('paneSettings'); });
+    $('settingsBackBtn').addEventListener('click', function () { showPane('paneChat'); });
+    $('wsBackBtn').addEventListener('click', function () { showPane('paneChat'); });
     $('filesBack').addEventListener('click', function () {
       if (fileStack.length > 1) { fileStack.pop(); renderFiles(fileStack[fileStack.length - 1]); }
       else showPane('paneChat');
@@ -902,6 +1032,11 @@ svg { flex: none; }
     $('scrim').addEventListener('click', closeDrawer);
     $('menuBtn').addEventListener('click', openDrawer);
     $('sendBtn').addEventListener('click', sendMessage);
+    $('stopBtn').addEventListener('click', stopTask);
+    $('sessSearch').addEventListener('input', function () {
+      state.sessQuery = this.value.trim().toLowerCase();
+      renderDrawer();
+    });
     $('input').addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
     });
