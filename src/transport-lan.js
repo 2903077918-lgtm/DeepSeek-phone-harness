@@ -13,8 +13,75 @@ import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { PORT, HOST, AGENT_VERSION } from './config.js';
 import { createApprovalRelay } from './approval-relay.js';
+
+// ---- 终端命令执行器（/api/shell 用，codex-relay workspace-ssh-terminal 的手机版）----
+// 每个命令独立进程（cmd + chcp 65001 输出 UTF-8），输出按序缓存，UI 增量轮询；
+// 无 PTY 交互能力（Windows 无内置），长任务可停止（taskkill /T /F）。
+const shellJobs = new Map(); // jobId -> job
+let shellJobSeq = 0;
+const SHELL_MAX_OUTPUT = 300000; // 单任务输出上限 300KB
+const SHELL_MAX_JOBS = 50;       // 任务表上限（FIFO 淘汰）
+
+function runShellCommand({ cwd, command }) {
+  const cmd = String(command || '').trim();
+  const job = {
+    id: 'sh-' + (++shellJobSeq) + '-' + Date.now().toString(36),
+    cwd: cwd ? path.resolve(String(cwd)) : process.cwd(),
+    command: cmd,
+    output: [],        // [{t:'out'|'err', s}]
+    running: true,
+    exitCode: null,
+    truncated: false,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    child: null,
+  };
+  if (!cmd) { job.running = false; job.exitCode = -1; job.finishedAt = new Date().toISOString(); job.output.push({ t: 'err', s: '命令不能为空' }); shellJobs.set(job.id, job); return job; }
+  shellJobs.set(job.id, job);
+  if (shellJobs.size > SHELL_MAX_JOBS) {
+    const oldest = shellJobs.keys().next().value;
+    if (oldest !== undefined) shellJobs.delete(oldest);
+  }
+  const push = (t, buf) => {
+    if (job.truncated) return;
+    let s = Buffer.isBuffer(buf) ? buf.toString('utf8') : String(buf);
+    const total = job.output.reduce((n, o) => n + o.s.length, 0);
+    if (total + s.length > SHELL_MAX_OUTPUT) {
+      s = s.slice(0, Math.max(0, SHELL_MAX_OUTPUT - total));
+      job.truncated = true;
+    }
+    if (s) job.output.push({ t, s });
+  };
+  try {
+    const child = spawn('cmd.exe', ['/d', '/s', '/c', 'chcp 65001 >nul & ' + cmd], {
+      cwd: job.cwd,
+      windowsHide: true,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', LANG: 'en_US.UTF-8' },
+    });
+    job.child = child;
+    child.stdout.on('data', (d) => push('out', d));
+    child.stderr.on('data', (d) => push('err', d));
+    child.on('error', (e) => { push('err', '进程启动失败: ' + String(e)); job.running = false; job.exitCode = -1; job.finishedAt = new Date().toISOString(); });
+    child.on('close', (code) => { job.running = false; job.exitCode = code; job.finishedAt = new Date().toISOString(); });
+  } catch (e) {
+    job.running = false; job.exitCode = -1; job.finishedAt = new Date().toISOString();
+    job.output.push({ t: 'err', s: '启动失败: ' + String(e) });
+  }
+  return job;
+}
+
+function stopShellJob(jobId) {
+  const job = shellJobs.get(String(jobId || ''));
+  if (!job) return { ok: false, error: '任务不存在' };
+  if (!job.running) return { ok: true, alreadyStopped: true };
+  if (job.child && job.child.pid) {
+    try { spawn('taskkill', ['/PID', String(job.child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { /* ignore */ }
+  }
+  return { ok: true };
+}
 
 export function createLanTransport({ config, rootDir, executor, history, queue }) {
   function auth(req, res) {
@@ -319,6 +386,51 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
           })).sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1));
           sendJson(res, 200, { ok: true, path: dp || '.', items });
         } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); }
+        return;
+      }
+      // ---- 终端（codex-relay workspace-ssh-terminal 的手机版，无 SSH 直接本地执行）----
+      // POST /api/shell {cwd, command} → {ok, jobId}；GET /api/shell?jobId=&after=N → 增量输出
+      // POST /api/shell/stop {jobId} → 终止进程树
+      if (req.method === 'POST' && url.pathname === '/api/shell') {
+        if (!auth(req, res)) return;
+        const body = await readBody(req);
+        const job = runShellCommand({ cwd: body.cwd, command: body.command });
+        sendJson(res, 200, { ok: true, jobId: job.id, running: job.running, cwd: job.cwd, command: job.command });
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/shell') {
+        if (!auth(req, res)) return;
+        const jobId = (url.searchParams.get('jobId') || '').trim();
+        const after = Number(url.searchParams.get('after') || '0');
+        const job = shellJobs.get(jobId);
+        if (!job) { sendJson(res, 404, { ok: false, error: '任务不存在或已过期' }); return; }
+        const out = Number.isFinite(after) && after > 0 ? job.output.slice(after) : job.output;
+        sendJson(res, 200, {
+          ok: true, jobId: job.id, running: job.running, exitCode: job.exitCode,
+          truncated: job.truncated, startedAt: job.startedAt, finishedAt: job.finishedAt,
+          cwd: job.cwd, command: job.command, output: out, index: job.output.length,
+        });
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/shell/stop') {
+        if (!auth(req, res)) return;
+        const body = await readBody(req);
+        const out = stopShellJob(body.jobId);
+        sendJson(res, out.ok ? 200 : 404, out);
+        return;
+      }
+      // ---- 会话重命名（转发 DSH session.rename）----
+      if (req.method === 'POST' && url.pathname === '/api/dsh-rename') {
+        if (!auth(req, res)) return;
+        if (typeof executor.renameSession !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const body = await readBody(req);
+        const out = await executor.renameSession(body.sessionId, body.title);
+        if (!out.ok) {
+          const code = out.code === 'bad-request' ? 400 : 502;
+          sendJson(res, code, { ok: false, error: out.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true, title: out.title });
         return;
       }
       res.writeHead(404, { 'content-type': 'application/json' });

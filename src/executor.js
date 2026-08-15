@@ -360,6 +360,19 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         return { ok: false, error: 'session.cancel 失败: ' + String(e) };
       }
     },
+    // POST /api/dsh-rename：重命名 DSH 会话（转发 session.rename）
+    async renameSession(sessionId, title) {
+      const sid = String(sessionId || '').trim();
+      const t = String(title || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      if (!t) return { ok: false, code: 'bad-request', error: 'title 不能为空' };
+      try {
+        const value = await fetchRpc('session.rename', { sessionId: sid, title: t });
+        return { ok: true, title: (value && value.title) || t, seq: value && value.seq };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'session.rename 失败: ' + String(e) };
+      }
+    },
     // GET /api/agents?sessionId=：转发 subagent.list，归一化子代理列表
     // DSH subagent.list 请求 {parentSessionId} → {entries, parentAvailable}
     //   每条 entry 探测字段：{kind, id, mode, label, activity, hasChildren}

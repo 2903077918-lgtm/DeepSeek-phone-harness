@@ -274,6 +274,31 @@ svg { flex: none; }
 .appr-card .q-custom { margin-bottom: 10px; }
 .appr-card .q-input { width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-sel); color: var(--text); font-size: 13px; outline: none; }
 .appr-card .q-input:focus { border-color: var(--blue); }
+/* ============ 终端页 ============ */
+.term-wrap { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; }
+.term-pre { font-family: var(--mono); font-size: 12px; line-height: 1.55; color: #D8E4FF; white-space: pre-wrap; word-break: break-all; }
+.term-pre .t-err { color: var(--red); }
+.term-pre .t-ok { color: var(--green); }
+.term-input-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px calc(10px + var(--safe-bottom)); border-top: 1px solid var(--border); background: var(--bg-el); }
+.term-prompt { color: var(--gold); font-family: var(--mono); font-size: 14px; font-weight: 700; }
+.term-input-row input { flex: 1; min-width: 0; background: var(--bg-sel); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--mono); font-size: 13px; padding: 9px 11px; outline: none; }
+.term-input-row input:focus { border-color: var(--blue); }
+.term-input-row .btn { min-height: 38px; font-size: 13px; padding: 0 16px; }
+/* ============ 任务列表页 ============ */
+.task-item { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-el); margin-bottom: 10px; overflow: hidden; }
+.task-item .task-head { display: flex; align-items: center; gap: 10px; padding: 12px 13px; cursor: pointer; }
+.task-item .task-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); }
+.task-item .task-dot.ok { background: var(--green); }
+.task-item .task-dot.err { background: var(--red); }
+.task-item .task-dot.run { background: var(--blue); }
+.task-item .task-main { flex: 1; min-width: 0; }
+.task-item .task-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task-item .task-meta { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.task-item .task-body { display: none; border-top: 1px solid var(--border); padding: 10px 13px; }
+.task-item.open .task-body { display: block; }
+.task-body pre { font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow: auto; margin-bottom: 8px; }
+.task-body .row { display: flex; gap: 8px; }
+.task-body .btn { min-height: 32px; font-size: 12px; padding: 0 12px; }
 .empty-state { text-align: center; color: var(--text-2); padding: 60px 24px; font-size: 13.5px; line-height: 1.9; }
 .empty-state .big { font-size: 15px; font-weight: 600; color: var(--text); }
 
@@ -374,6 +399,14 @@ svg { flex: none; }
       <button class="item" id="filesBtn" type="button">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>文件</span>
+      </button>
+      <button class="item" id="termBtn" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <span>终端</span>
+      </button>
+      <button class="item" id="tasksBtn" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        <span>任务</span>
       </button>
       <button class="item" id="connBtn" type="button">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M21 8a9 9 0 1 0 1 6"/></svg>
@@ -489,6 +522,42 @@ svg { flex: none; }
       <div class="editor-wrap"><pre class="editor-pre" id="editorPre"></pre></div>
     </div>
 
+    <!-- 终端页（codex-relay workspace-ssh-terminal 手机版） -->
+    <div class="pane hidden" id="paneTerminal">
+      <div class="chat-head">
+        <button class="btn ghost sm" id="termBack" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          返回
+        </button>
+        <div class="info"><div class="t">终端</div><div class="s mono" id="termCwd">-</div></div>
+        <button class="btn ghost sm hidden" id="termStop" type="button">停止</button>
+      </div>
+      <div class="term-wrap">
+        <pre class="term-pre" id="termOut">等待输入命令…</pre>
+      </div>
+      <div class="term-input-row">
+        <span class="term-prompt">$</span>
+        <input id="termInput" type="text" placeholder="输入命令，回车执行" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <button class="btn" id="termRun" type="button">执行</button>
+      </div>
+    </div>
+
+    <!-- 任务列表页（codex-relay 任务栏界面） -->
+    <div class="pane hidden" id="paneTasks">
+      <div class="chat-head">
+        <button class="btn ghost sm" id="tasksBack" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          返回
+        </button>
+        <div class="info"><div class="t">任务</div><div class="s" id="tasksCount"></div></div>
+        <button class="btn ghost sm" id="tasksRefresh" type="button">刷新</button>
+      </div>
+      <div class="scroll" id="tasksScroll">
+        <div id="tasksList"></div>
+        <div class="empty hidden" id="tasksEmpty">暂无任务记录</div>
+      </div>
+    </div>
+
     <!-- 设置页 -->
     <div class="pane hidden" id="paneSettings">
       <div class="chat-head">
@@ -573,7 +642,7 @@ svg { flex: none; }
   function fmtTime(iso) { if (!iso) return ''; var d = new Date(iso); if (isNaN(d)) return ''; return d.toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
   function fmtAgo(iso) { if (!iso) return ''; var s = (Date.now() - new Date(iso).getTime()) / 1000; if (s < 60) return '刚刚'; if (s < 3600) return Math.floor(s / 60) + ' 分钟前'; if (s < 86400) return Math.floor(s / 3600) + ' 小时前'; return fmtTime(iso); }
   function showPane(id) {
-    ['paneConnect', 'paneWorkspaces', 'paneChat', 'paneFiles', 'paneEditor', 'paneSettings'].forEach(function (p) {
+    ['paneConnect', 'paneWorkspaces', 'paneChat', 'paneFiles', 'paneEditor', 'paneTerminal', 'paneTasks', 'paneSettings'].forEach(function (p) {
       var el = $(p); if (el) el.classList.toggle('hidden', p !== id);
     });
   }
@@ -721,12 +790,18 @@ svg { flex: none; }
       main.className = 'main';
       main.innerHTML = '<span class="t">' + esc(title) + '</span><span class="s">' + esc(meta) + '</span>';
       main.addEventListener('click', function () { openSession(s); closeDrawer(); });
+      var rn = document.createElement('button');
+      rn.className = 'drawer-del';
+      rn.title = '重命名会话';
+      rn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
+      rn.addEventListener('click', function () { renameSession(s); });
       var del = document.createElement('button');
       del.className = 'drawer-del';
       del.title = '删除会话';
       del.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
       del.addEventListener('click', function () { deleteSession(s); });
       it.appendChild(main);
+      it.appendChild(rn);
       it.appendChild(del);
       list.appendChild(it);
     });
@@ -742,6 +817,21 @@ svg { flex: none; }
     }
     renderDrawer();
     toast('已删除');
+  }
+  // 重命名会话（转发 DSH session.rename，标题落库到电脑端）
+  async function renameSession(s) {
+    var t = prompt('新标题：', s.title || s.cwd || '');
+    if (!t || !t.trim()) return;
+    try {
+      var d = await api('/api/dsh-rename', { method: 'POST', body: JSON.stringify({ sessionId: s.sessionId, title: t.trim() }) });
+      s.title = (d && d.title) || t.trim();
+      if (state.currentSess && state.currentSess.sessionId === s.sessionId) {
+        state.currentSess.title = s.title;
+        $('chatTitle').textContent = s.title;
+      }
+      renderDrawer();
+      toast('已重命名');
+    } catch (e) { toast('重命名失败：' + e.message, true); }
   }
 
   // ============ 对话 ============
@@ -1227,6 +1317,142 @@ svg { flex: none; }
   }
 
   // ============ 设置 ============
+  // ============ 终端（codex-relay workspace-ssh-terminal 手机版） ============
+  var termJobId = null, termIndex = 0, termTimer = null;
+  var termCwd = null; // 记住上次目录，切工作区时更新
+  function termAppend(t, s, isErr) {
+    var pre = $('termOut');
+    if (pre.textContent === '等待输入命令…') pre.textContent = '';
+    var span = document.createElement('span');
+    if (isErr) span.className = 't-err';
+    span.textContent = s;
+    pre.appendChild(span);
+    pre.scrollTop = pre.scrollHeight;
+  }
+  function openTerminal() {
+    if (state.currentWs && state.currentWs.path) termCwd = state.currentWs.path;
+    $('termCwd').textContent = termCwd || (state.currentWs ? state.currentWs.path : '') || '-';
+    $('termRun').disabled = false;
+    if (termJobId) { $('termStop').classList.remove('hidden'); termPoll(); }
+    showPane('paneTerminal');
+    setTimeout(function () { $('termInput').focus(); }, 50);
+  }
+  async function termRun() {
+    var cmd = $('termInput').value.trim();
+    if (!cmd) return;
+    var cwd = termCwd || (state.currentWs ? state.currentWs.path : '') || '.';
+    $('termOut').textContent = '';
+    termIndex = 0;
+    termAppend(null, '$ ' + cmd + '\n', false);
+    $('termInput').value = '';
+    $('termRun').disabled = true;
+    $('termStop').classList.remove('hidden');
+    try {
+      var d = await api('/api/shell', { method: 'POST', body: JSON.stringify({ cwd: cwd, command: cmd }), timeoutMs: 8000 });
+      termJobId = d.jobId;
+      termPoll();
+      if (termTimer) clearInterval(termTimer);
+      termTimer = setInterval(termPoll, 800);
+    } catch (e) {
+      termAppend(null, '执行失败：' + e.message + '\n', true);
+      $('termRun').disabled = false;
+      $('termStop').classList.add('hidden');
+    }
+  }
+  async function termPoll() {
+    if (!termJobId) return;
+    try {
+      var d = await api('/api/shell?jobId=' + enc(termJobId) + '&after=' + termIndex, { timeoutMs: 6000 });
+      (d.output || []).forEach(function (o) { termAppend(null, o.s, o.t === 'err'); });
+      termIndex = d.index || termIndex;
+      if (!d.running) {
+        if (termTimer) { clearInterval(termTimer); termTimer = null; }
+        termAppend(null, '\n[退出码 ' + (d.exitCode == null ? '?' : d.exitCode) + ']' + (d.truncated ? '（输出过长已截断）' : '') + '\n', d.exitCode !== 0);
+        termJobId = null;
+        $('termRun').disabled = false;
+        $('termStop').classList.add('hidden');
+      }
+    } catch (e) { /* 网络抖动忽略，下轮重试 */ }
+  }
+  async function termStop() {
+    if (!termJobId) return;
+    try {
+      await api('/api/shell/stop', { method: 'POST', body: JSON.stringify({ jobId: termJobId }), timeoutMs: 6000 });
+      termAppend(null, '\n[已停止]\n', true);
+    } catch (e) { termAppend(null, '停止失败：' + e.message + '\n', true); }
+    termPoll();
+  }
+
+  // ============ 任务列表（codex-relay 任务栏界面） ============
+  async function loadTasks() {
+    var box = $('tasksList');
+    box.textContent = '';
+    $('tasksEmpty').classList.add('hidden');
+    try {
+      var d = await api('/api/history', { timeoutMs: 8000 });
+      var items = (d && d.items) || [];
+      $('tasksCount').textContent = items.length ? items.length + ' 条' : '';
+      if (!items.length) { $('tasksEmpty').classList.remove('hidden'); return; }
+      items.forEach(function (t) {
+        var it = document.createElement('div');
+        it.className = 'task-item';
+        var first = String(t.task || '').split('\n')[0].trim();
+        var metaParts = [fmtAgo(t.at)];
+        if (t.sessionId) metaParts.push(String(t.sessionId).slice(0, 12));
+        if (typeof t.elapsedMs === 'number') metaParts.push((t.elapsedMs / 1000).toFixed(1) + 's');
+        if (t.backend) metaParts.push(t.backend);
+        var statusCls = t.ok ? 'ok' : 'err';
+        it.innerHTML =
+          '<div class="task-head">' +
+          '<span class="task-dot ' + statusCls + '"></span>' +
+          '<div class="task-main"><div class="task-title">' + esc(first) + '</div>' +
+          '<div class="task-meta">' + esc(metaParts.join(' · ')) + '</div></div>' +
+          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-3);flex:none"><polyline points="6 9 12 15 18 9"/></svg>' +
+          '</div>' +
+          '<div class="task-body">' +
+          (t.stdout ? '<pre>' + esc(t.stdout.slice(0, 4000)) + '</pre>' : '') +
+          (t.stderr ? '<pre style="color:var(--red)">' + esc(t.stderr.slice(0, 2000)) + '</pre>' : '') +
+          '<div class="row">' +
+          '<button class="btn ghost" data-act="copy">复制输出</button>' +
+          '<button class="btn ghost" data-act="rerun">重跑</button>' +
+          '</div></div>';
+        it.querySelector('.task-head').addEventListener('click', function () { it.classList.toggle('open'); });
+        it.querySelector('[data-act="copy"]').addEventListener('click', function () {
+          copyText((t.stdout || '') + (t.stderr ? '\n[err]\n' + t.stderr : ''));
+        });
+        it.querySelector('[data-act="rerun"]').addEventListener('click', function () {
+          if (!state.currentSess) { toast('请先打开一个会话', true); return; }
+          showPane('paneChat');
+          state.currentSess = state.currentSess; // 复用当前会话
+          sendRawTask(String(t.task || ''));
+          toast('已重跑任务');
+        });
+        box.appendChild(it);
+      });
+    } catch (e) {
+      $('tasksEmpty').textContent = '加载失败：' + e.message;
+      $('tasksEmpty').classList.remove('hidden');
+    }
+  }
+  function sendRawTask(task) {
+    if (!state.base || !state.token) return;
+    var input = $('input');
+    input.value = task;
+    sendMessage();
+  }
+  function copyText(s) {
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = s; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); toast('已复制'); } catch (e) { toast('复制失败', true); }
+      ta.remove();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(s).then(function () { toast('已复制'); }, fallback);
+    } else fallback();
+  }
+
   function renderSettings() {
     $('setServer').textContent = state.base || '-';
     $('setConn').textContent = $('connLabel').textContent;
@@ -1258,6 +1484,14 @@ svg { flex: none; }
     $('wsBtn').addEventListener('click', function () { closeDrawer(); showPane('paneWorkspaces'); loadWorkspaces(); });
     $('wsSwitchBtn').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
     $('filesBtn').addEventListener('click', function () { closeDrawer(); openFileBrowser(null); });
+    $('termBtn').addEventListener('click', function () { closeDrawer(); openTerminal(); });
+    $('termBack').addEventListener('click', function () { showPane('paneChat'); });
+    $('termRun').addEventListener('click', termRun);
+    $('termStop').addEventListener('click', termStop);
+    $('termInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); termRun(); } });
+    $('tasksBtn').addEventListener('click', function () { closeDrawer(); showPane('paneTasks'); loadTasks(); });
+    $('tasksBack').addEventListener('click', function () { showPane('paneChat'); });
+    $('tasksRefresh').addEventListener('click', loadTasks);
     $('settingsBtn').addEventListener('click', function () { closeDrawer(); renderSettings(); showPane('paneSettings'); });
     $('settingsBackBtn').addEventListener('click', function () { showPane('paneChat'); });
     $('wsBackBtn').addEventListener('click', function () { showPane('paneChat'); });
@@ -1298,6 +1532,7 @@ svg { flex: none; }
 
     // 手机：抽屉按钮在顶栏；桌面宽屏：抽屉常驻
     if (window.innerWidth < 900) {
+      $('menuBtn').classList.remove('hidden'); // .hidden 是 !important，必须去掉 class 才能显示
       $('menuBtn').style.display = 'grid';
     } else {
       $('drawer').classList.add('open');

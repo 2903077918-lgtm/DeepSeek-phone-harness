@@ -8,7 +8,7 @@ export const PORT = 8788; // 8787 已被本机 Codex Relay 占用
 export const HOST = '0.0.0.0'; // 局域网可访问；公网使用需前置安全网关
 export const DSH_CMD = 'dsh';
 export const TASK_TIMEOUT_MS = 10 * 60 * 1000; // 单任务最长 10 分钟
-export const AGENT_VERSION = '0.3.0';
+export const AGENT_VERSION = '0.4.0';
 
 export function resolveApiKey(rootDir) {
   if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY;
