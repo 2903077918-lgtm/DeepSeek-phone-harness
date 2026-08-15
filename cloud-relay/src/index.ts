@@ -87,7 +87,7 @@ export default {
     // ---- 账号 ----
     if (method === 'POST' && pathname === '/v1/auth/register') {
       const { email, password } = await readJson(request);
-      if (!email || !password) return json({ error: 'email/password 必填' }, 400);
+      if (!email || !password) return json({ error: '用户名/密码必填' }, 400);
       try {
         const u = await createUser(db, String(email), String(password));
         return json({ ok: true, userId: u.id });
@@ -96,7 +96,7 @@ export default {
     if (method === 'POST' && pathname === '/v1/auth/login') {
       const { email, password } = await readJson(request);
       const u = await loginUser(db, String(email), String(password));
-      if (!u) return json({ error: '邮箱或密码错误' }, 401);
+      if (!u) return json({ error: '用户名/密码错误' }, 401);
       return json({ ok: true, userId: u.id, email: u.email });
     }
 

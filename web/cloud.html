@@ -60,8 +60,8 @@
     <h2>🔗 云端连接与账号</h2>
     <label>云端地址</label>
     <input id="cloudUrl" type="text" placeholder="wss/ https://cloud-relay.example.com" autocomplete="off">
-    <label>邮箱</label>
-    <input id="email" type="email" placeholder="you@example.com" autocomplete="off">
+    <label>用户名 / 邮箱</label>
+    <input id="email" type="text" placeholder="任意用户名（无需邮箱）" autocomplete="off">
     <label>密码</label>
     <input id="password" type="password" placeholder="••••••••" autocomplete="off">
     <div class="row" style="margin-top:12px">
@@ -156,14 +156,14 @@ import { generateKeyPair, deriveSessionKey, generateKeySalt, encrypt, decrypt } 
   // ---- 账号 ----
   async function register() {
     var em = $('email').value.trim(), pw = $('password').value;
-    if (!em||!pw) return toast('邮箱/密码必填', true);
+    if (!em||!pw) return toast('用户名/密码必填', true);
     try { var d = await api('/v1/auth/register', { method:'POST', body: JSON.stringify({email:em,password:pw}) });
       toast('注册成功，请登录'); $('password').value=''; }
     catch(e){ toast('注册失败: ' + e.message, true); }
   }
   async function doLogin() {
     var em = $('email').value.trim(), pw = $('password').value;
-    if (!em||!pw) return toast('邮箱/密码必填', true);
+    if (!em||!pw) return toast('用户名/密码必填', true);
     try {
       var d = await api('/v1/auth/login', { method:'POST', body: JSON.stringify({email:em,password:pw}) });
       state.userId = d.userId; state.email = d.email;
