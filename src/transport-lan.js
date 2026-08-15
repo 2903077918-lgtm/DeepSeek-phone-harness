@@ -272,6 +272,36 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         }
         return;
       }
+      // 文件读取（代码界面用）：GET /api/file?path= 返回文件内容 + 语言
+      if (req.method === 'GET' && url.pathname === '/api/file') {
+        if (!auth(req, res)) return;
+        const fp = (url.searchParams.get('path') || '').trim();
+        if (!fp) { sendJson(res, 400, { ok: false, error: 'missing path' }); return; }
+        try {
+          const full = path.resolve(rootDir, fp);
+          const st = await import('node:fs/promises').then(m => m.stat(full));
+          if (!st.isFile()) { sendJson(res, 400, { ok: false, error: 'not a file' }); return; }
+          const content = await import('node:fs/promises').then(m => m.readFile(full, 'utf8'));
+          sendJson(res, 200, { ok: true, path: fp, content, size: st.size });
+        } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); }
+        return;
+      }
+      // 列目录（代码界面用）：GET /api/files?path= 返回子项
+      if (req.method === 'GET' && url.pathname === '/api/files') {
+        if (!auth(req, res)) return;
+        const dp = (url.searchParams.get('path') || '').trim();
+        try {
+          const full = path.resolve(rootDir, dp || '.');
+          const { readdir } = await import('node:fs/promises');
+          const entries = await readdir(full, { withFileTypes: true });
+          const items = entries.map((e) => ({
+            name: e.name, type: e.isDirectory() ? 'dir' : 'file',
+            path: path.join(dp || '.', e.name).replace(/\\/g, '/'),
+          })).sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1));
+          sendJson(res, 200, { ok: true, path: dp || '.', items });
+        } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); }
+        return;
+      }
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: 'not found' }));
     } catch (e) {
