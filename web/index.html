@@ -366,6 +366,43 @@
   .mini-btn:active { transform: scale(0.96); }
 
   /* ================= 对话区 ================= */
+  /* 横向会话条（codex-relay ThreadList 风格） */
+  .thread-rail {
+    flex: none;
+    padding: 10px 12px 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .thread-rail::-webkit-scrollbar { display: none; }
+  .thread-rail-inner {
+    display: flex; gap: 8px; min-width: max-content;
+  }
+  .thread-card {
+    width: 190px; flex: none;
+    border: 1px solid rgba(132, 145, 165, 0.18);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    display: flex; flex-direction: column; gap: 3px;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .thread-card:active { opacity: 0.72; }
+  .thread-card.active {
+    background: rgba(95, 167, 255, 0.16);
+    border-color: rgba(95, 167, 255, 0.42);
+  }
+  .thread-card .tc-title {
+    font-size: 13px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .thread-card .tc-meta {
+    font-size: 11px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
   .chat {
     flex: 1;
     overflow-y: auto;
@@ -479,6 +516,10 @@
   }
   .tool-line.run { color: #C6D2FF; }
   .tool-line.done { color: var(--ok); }
+  .tool-dot {
+    display: inline-block; width: 7px; height: 7px; flex: none;
+    border-radius: 50%; background: var(--ok);
+  }
   .spin {
     display: inline-block; width: 9px; height: 9px; flex: none;
     border: 1.5px solid rgba(108, 140, 255, 0.3); border-top-color: #6C8CFF;
@@ -749,9 +790,14 @@
 
   <!-- 上下文条：项目名 > 会话标题（点击返回项目列表） -->
   <div class="crumb" id="crumbBar" role="button" aria-label="返回项目与对话" title="返回项目与对话">
-    <span class="crumb-home">📁 项目与对话</span>
+    <span class="crumb-home"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> 项目与对话</span>
     <span class="crumb-sep">›</span>
     <span class="crumb-cur" id="crumbCur">新会话</span>
+  </div>
+
+  <!-- 会话横向条（codex-relay 风格：顶部横向卡片） -->
+  <div class="thread-rail" id="threadRail" hidden>
+    <div class="thread-rail-inner" id="threadRailInner"></div>
   </div>
 
   <main class="chat" id="chat" aria-live="polite"></main>
@@ -788,7 +834,7 @@
 
     <section class="dsec">
       <h3 class="dsec-title">
-        <span>💼 DSH 工作区</span>
+        <span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg> DSH 工作区</span>
         <span class="dsec-count" id="wsCount"></span>
         <button type="button" class="mini-btn" id="wsRefresh" aria-label="刷新工作区" style="margin-left:auto; min-height:30px; padding:0 10px">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -800,7 +846,7 @@
 
     <section class="dsec" id="ungroupedSec" hidden>
       <h3 class="dsec-title">
-        <span>📂 未分组</span>
+        <span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> 未分组</span>
         <span class="dsec-count" id="ungroupedCount"></span>
       </h3>
       <div id="ungroupedList"></div>
@@ -808,7 +854,7 @@
 
     <section class="dsec">
       <h3 class="dsec-title">
-        <span>📱 我的对话</span>
+        <span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 我的对话</span>
         <span class="dsec-count" id="localCount"></span>
       </h3>
       <div id="localList"></div>
@@ -820,7 +866,7 @@
 
     <section class="dsec">
       <h3 class="dsec-title">
-        <span>🕘 全局记录</span>
+        <span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg> 全局记录</span>
         <span class="dsec-count" id="ghCount"></span>
         <button type="button" class="mini-btn" id="ghRefresh" aria-label="刷新全局记录" style="margin-left:auto; min-height:30px; padding:0 10px">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -880,7 +926,7 @@
     <button type="button" class="icon-btn nav-back" id="agtBack" aria-label="返回项目列表">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
-    <div class="brand"><div class="brand-name">🤖 Agent 活动</div></div>
+    <div class="brand"><div class="brand-name"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="13" y2="14"/></svg> Agent 活动</div></div>
     <button type="button" class="mini-btn agt-refresh" id="agtRefresh">
       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       刷新
@@ -978,6 +1024,13 @@
   // 新增：文件夹 & 消息气泡 SVG 线条图标（替换 emoji）
   var ICON_FOLDER = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
   var ICON_BUBBLE = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  // 精简线条图标（codex-relay 风格，替换界面 emoji）
+  var ICON_WORKSPACE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>';
+  var ICON_UNGROUPED = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+  var ICON_CHAT = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  var ICON_HISTORY = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>';
+  var ICON_AGENT = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="13" y2="14"/></svg>';
+  var ICON_TOOL = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3z"/></svg>';
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -1089,6 +1142,36 @@
     switchSession(s.id);
     return s.id;
   }
+  // 横向会话条（codex-relay ThreadList 风格）：顶部横向卡片，点击切换会话
+  function renderThreadRail() {
+    var rail = $('threadRail');
+    var inner = $('threadRailInner');
+    if (!rail || !inner) return;
+    var sessions = state.sessions.slice().sort(function (a, b) {
+      return (b.lastUsedAt || b.createdAt || '').localeCompare(a.lastUsedAt || a.createdAt || '');
+    });
+    if (state.view && state.view.kind === 'dsh') { rail.hidden = true; return; }
+    if (sessions.length <= 1) { rail.hidden = true; return; }  // 单会话不占空间
+    rail.hidden = false;
+    inner.textContent = '';
+    sessions.forEach(function (s) {
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'thread-card' + (s.id === state.currentId ? ' active' : '');
+      var cnt = loadMsgs(s.id).length;
+      var title = document.createElement('span');
+      title.className = 'tc-title';
+      title.textContent = s.title || '新会话';
+      var meta = document.createElement('span');
+      meta.className = 'tc-meta';
+      meta.textContent = (cnt ? cnt + ' 条消息' : '空会话') + ' · ' + fmtAgo(s.lastUsedAt || s.createdAt);
+      card.appendChild(title);
+      card.appendChild(meta);
+      card.addEventListener('click', function () { switchSession(s.id); });
+      inner.appendChild(card);
+    });
+  }
+
   function switchSession(id) {
     if (!state.sessions.some(function (s) { return s.id === id; })) return;
     state.currentId = id;
@@ -1096,6 +1179,7 @@
     touchSession(id);
     renderMessages('bottom');
     updateCrumb();
+    renderThreadRail();
   }
   function deleteSession(id) {
     localStorage.removeItem(LS_PREFIX + id);
@@ -1108,6 +1192,7 @@
     }
     renderMessages('bottom');
     updateCrumb();
+    renderThreadRail();
   }
 
   /* ================= iOS 导航栈 ================= */
@@ -1231,7 +1316,7 @@
     return c === p || c.indexOf(p + '/') === 0;
   }
 
-  // 「📂 未分组」伪项目桶：收纳 ungrouped=true 的电脑会话（层级1 展示、层级2 复用会话列表页）
+  // 「未分组」伪项目桶：收纳 ungrouped=true 的电脑会话（层级1 展示、层级2 复用会话列表页）
   var UNGROUPED_WS = { workspaceId: '__ungrouped__', path: '', title: '未分组', ungrouped: true };
 
   function projectSessions(ws) {
@@ -1562,7 +1647,8 @@
     if (!items.length) { emptyBox.textContent = '当前会话暂无子代理'; return; }
     items.forEach(function (a) {
       var item = el('div', 'agt-item');
-      var avatar = el('span', 'agt-avatar', '🤖');
+      var avatar = el('span', 'agt-avatar');
+      avatar.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="13" y2="14"/></svg>';
       var main = el('div', 'agt-main');
       main.appendChild(el('div', 'agt-title', a.label || '未命名子代理'));
       var meta = '#' + (a.sessionId ? a.sessionId.slice(0, 8) : '');
@@ -1695,6 +1781,7 @@
       else chat.appendChild(m.role === 'user' ? userEl(m) : asstEl(m));
     });
     if (state.running && state.runSid === sid) chat.appendChild(pendingEl());
+    renderThreadRail();
     gotoScroll();
 
     function gotoScroll() {
@@ -1768,7 +1855,8 @@
     }
     if (role === 'tool') {
       var tw = el('div', 'msg assistant');
-      var tc = el('div', 'dsh-tool', '🛠 ' + String(it.text == null ? '' : it.text));
+      var tc = el('div', 'dsh-tool');
+      tc.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3z"/></svg> ' + escHtml(String(it.text == null ? '' : it.text));
       tw.appendChild(tc);
       tw.appendChild(el('div', 'meta', fmtTime(it.time || it.at)));
       return tw;
@@ -1827,7 +1915,7 @@
     okHead.appendChild(el('span', 'asst-name', 'deepseekharness-relay'));
     if (typeof m.ok === 'boolean') {
       var okChip = el('span', 'chip ' + (m.ok ? 'ok' : 'fail'));
-      okChip.textContent = m.ok ? '✓ 成功' : ('✗ 失败' + (typeof m.exitCode === 'number' ? ' · ' + m.exitCode : ''));
+      okChip.textContent = m.ok ? '成功' : ('失败' + (typeof m.exitCode === 'number' ? ' · ' + m.exitCode : ''));
       okHead.appendChild(okChip);
     }
     if (m.backend) okHead.appendChild(el('span', 'chip backend', m.backend));
@@ -1918,8 +2006,8 @@
     var title = status === 'pending' || status === 'processing' ? '需要授权'
       : (status === 'allowed' ? '已允许' : (status === 'rejected' ? '已拒绝' : '已处理'));
     head.appendChild(el('span', 'appr-title', title));
-    if (status === 'allowed') head.appendChild(el('span', 'appr-chip ok', '✓ 已允许'));
-    else if (status === 'rejected') head.appendChild(el('span', 'appr-chip err', '✗ 已拒绝'));
+    if (status === 'allowed') head.appendChild(el('span', 'appr-chip ok', '已允许'));
+    else if (status === 'rejected') head.appendChild(el('span', 'appr-chip err', '已拒绝'));
     else if (status === 'expired') head.appendChild(el('span', 'appr-chip muted', '已处理'));
     head.appendChild(el('span', 'appr-time', fmtTime(m.receivedAt || m.at)));
     card.appendChild(head);
@@ -2223,7 +2311,7 @@
       var html = '';
       st.tools.forEach(function (t) {
         html += '<span class="tool-line ' + (t.done ? 'done' : 'run') + '">' +
-          (t.done ? '✓' : '<span class="spin"></span>') + ' ' + escHtml(t.name) + '</span>';
+          (t.done ? '<span class="tool-dot"></span>' : '<span class="spin"></span>') + ' ' + escHtml(t.name) + '</span>';
       });
       st.el.tools.innerHTML = html;
     }
@@ -2503,7 +2591,7 @@
     head.type = 'button';
     head.className = 'gh-head';
     head.setAttribute('aria-expanded', 'false');
-    var chip = el('span', 'chip ' + (h.ok ? 'ok' : 'fail'), h.ok ? '✓' : '✗');
+    var chip = el('span', 'chip ' + (h.ok ? 'ok' : 'fail'), h.ok ? '成功' : '失败');
     var task = el('span', 'gh-task', firstLine(h.task, 42));
     var time = el('span', 'gh-time', fmtTime(h.at));
     head.appendChild(chip);
@@ -2554,7 +2642,7 @@
       c.textContent = (state.view.projectTitle || '项目') + ' › ' + (state.view.sessionTitle || '会话');
     } else {
       var s = state.sessions.find(function (x) { return x.id === state.currentId; });
-      c.textContent = '📱 我的对话 › ' + (s ? (s.title || '新会话') : '新会话');
+      c.textContent = '我的对话 › ' + (s ? (s.title || '新会话') : '新会话');
     }
   }
 
@@ -2631,6 +2719,7 @@
     repairInterrupted();
     renderMessages('bottom');
     updateCrumb();
+    renderThreadRail();
     renderProjects();
     renderSettingsStatus();
     updateInputLock();
