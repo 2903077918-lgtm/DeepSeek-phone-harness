@@ -1,0 +1,11 @@
+{
+  "token": "请填写你的访问令牌（复制自启动日志）",
+  "createdAt": "2026-08-13T18:19:58.718Z",
+  "cloud": {
+    "url": "https://relay.axyntara.cn",
+    "deviceToken": "ph-device-local",
+    "deviceId": "win-agent-home",
+    "deviceName": "家里电脑",
+    "pollIntervalMs": 3000
+  }
+}
