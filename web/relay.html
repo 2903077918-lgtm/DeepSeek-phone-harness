@@ -1611,20 +1611,71 @@ svg { flex: none; }
       });
       list.appendChild(sec);
     });
+    // 推理强度区（对标 DSH：当前模型的 reasoning efforts 可切换）
+    var cur = modelState.current;
+    if (cur && cur.model) {
+      var effs = null;
+      for (var gi = 0; gi < modelState.groups.length && !effs; gi++) {
+        var gg = modelState.groups[gi];
+        if (gg.id === cur.provider && gg.models) {
+          var mm = gg.models.find(function (x) { return x.id === cur.model; });
+          if (mm && mm.reasoning && mm.reasoning.efforts) effs = mm.reasoning.efforts;
+        }
+      }
+      if (effs && effs.length) {
+        var eSec = document.createElement('div');
+        eSec.className = 'model-group';
+        var eG = document.createElement('div');
+        eG.className = 'gname';
+        eG.textContent = '推理强度';
+        eSec.appendChild(eG);
+        effs.forEach(function (ef) {
+          var eb = document.createElement('button');
+          eb.type = 'button';
+          var on = cur.reasoningEffort === ef.id;
+          eb.className = 'model-item' + (on ? ' on' : '');
+          eb.innerHTML = '<span class="m-name">' + esc(ef.name || ef.id) + '</span>' +
+            (on ? '<span class="m-check">&#10003;</span>' : '');
+          eb.addEventListener('click', function () { selectEffort(cur.provider, cur.model, ef.id); });
+          eSec.appendChild(eb);
+        });
+        list.appendChild(eSec);
+      }
+    }
     $('modelMask').classList.remove('hidden');
   }
-  async function selectModel(provider, model) {
-    if (!state.currentSess) { toast('请先打开一个会话', true); return; }
+  // 切换推理强度（改名模型不变，仅 effort）
+  async function selectEffort(provider, model, effort) {
+    if (!state.currentSess) return;
     try {
       var d = await api('/api/dsh-models', {
         method: 'POST',
-        body: JSON.stringify({ sessionId: state.currentSess.sessionId, provider: provider, model: model }),
+        body: JSON.stringify({ sessionId: state.currentSess.sessionId, provider: provider, model: model, reasoningEffort: effort }),
         timeoutMs: 15000,
       });
       if (d && d.ok && d.selected) {
         modelState.current = d.selected;
         $('modelBtnLabel').textContent = d.selected.model || model;
-        renderPresetBtn(); // 同步更新 hint（模型 + 模式）
+        renderPresetBtn();
+        toast('推理强度：' + effort);
+      }
+      openModelSheet(); // 刷新面板高亮
+    } catch (e) { toast('切换失败：' + e.message, true); }
+  }
+  async function selectModel(provider, model, effort) {
+    if (!state.currentSess) { toast('请先打开一个会话', true); return; }
+    try {
+      var body = { sessionId: state.currentSess.sessionId, provider: provider, model: model };
+      if (effort) body.reasoningEffort = effort;
+      var d = await api('/api/dsh-models', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        timeoutMs: 15000,
+      });
+      if (d && d.ok && d.selected) {
+        modelState.current = d.selected;
+        $('modelBtnLabel').textContent = d.selected.model || model;
+        renderPresetBtn(); // 同步更新 hint（模型 + 模式 + 推理强度）
         toast('已切换模型：' + (d.selected.model || model));
       }
       $('modelMask').classList.add('hidden');
