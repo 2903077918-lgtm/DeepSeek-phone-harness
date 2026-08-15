@@ -215,10 +215,13 @@ export default {
     }
 
     // 静态资源兜底（手机控制台）：非 /v1/ API 的 GET 请求交给 ASSETS（web/ 目录）
+    // 根路径默认返回 index.html（= 新手机界面）；旧控制台归档在 /console
     if (method === 'GET' && !pathname.startsWith('/v1/')) {
       const assets = (env as unknown as { ASSETS?: { fetch(r: Request): Promise<Response> } }).ASSETS;
       if (assets) {
-        const res = await assets.fetch(request);
+        const assetPath = pathname === '/console' ? '/console.html' : pathname;
+        const req = assetPath === pathname ? request : new Request(new URL(assetPath, request.url), request);
+        const res = await assets.fetch(req);
         if (res.status !== 404) return res;
       }
     }

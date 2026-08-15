@@ -131,14 +131,26 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         res.end();
         return;
       }
+      // 根路径直接给手机新界面（relay.html，codex-relay 风格）；旧控制台保留在 /console
       if (req.method === 'GET' && url.pathname === '/') {
-        // no-store：防止手机浏览器缓存旧版 UI（v2 升级后旧缓存导致"无法加载"）
+        // no-store：防止手机浏览器缓存旧版 UI（旧缓存导致"看不到新界面"）
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate' });
-        const webFile = path.join(rootDir, 'web', 'index.html');
-        if (existsSync(webFile)) {
-          res.end(readFileSync(webFile, 'utf8'));
+        const relayFile = path.join(rootDir, 'web', 'relay.html');
+        if (existsSync(relayFile)) {
+          res.end(readFileSync(relayFile, 'utf8'));
         } else {
-          res.end('<!DOCTYPE html><html><body><h1>deepseekharness-relay</h1><p>web/index.html 缺失</p></body></html>');
+          res.end('<!DOCTYPE html><html><body><h1>relay.html 缺失</h1></body></html>');
+        }
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/console') {
+        // 旧局域网控制台（v2 界面，已归档到 console.html），仅保留入口不主动展示
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate' });
+        const consoleFile = path.join(rootDir, 'web', 'console.html');
+        if (existsSync(consoleFile)) {
+          res.end(readFileSync(consoleFile, 'utf8'));
+        } else {
+          res.end('<!DOCTYPE html><html><body><h1>deepseekharness-relay</h1><p>web/console.html 缺失</p></body></html>');
         }
         return;
       }
