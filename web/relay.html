@@ -333,15 +333,16 @@ svg { flex: none; }
 .attach-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .attach-item .x { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.65); color: #fff; display: grid; place-items: center; font-size: 10px; border: none; cursor: pointer; }
 .composer {
-  display: flex; align-items: flex-end; gap: 6px;
+  display: flex; flex-direction: column;
   background: var(--bg-el); border: 1px solid var(--border-strong);
-  border-radius: 18px; padding: 6px 6px 6px 10px;
+  border-radius: 18px; padding: 6px;
   transition: border-color 0.15s;
 }
 .composer:focus-within { border-color: var(--blue); }
+.composer-row { display: flex; align-items: flex-end; gap: 6px; }
 .composer .add {
   flex: none; width: 32px; height: 32px; border-radius: 50%;
-  display: grid; place-items: center; color: var(--text-2); margin-bottom: 2px;
+  display: grid; place-items: center; color: var(--text-2); margin-bottom: 2px; margin-left: 6px;
 }
 .composer .add:active { transform: scale(0.9); }
 .composer textarea {
@@ -359,8 +360,13 @@ svg { flex: none; }
 .composer .send:disabled { background: var(--bg-sel); color: var(--text-3); }
 
 /* 模型胶囊 + 底部选择面板（对标 DSH Web GUI）：放在输入框上方工具行 */
-.composer-tools { display: flex; align-items: center; gap: 8px; padding: 2px 2px 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.composer-tools-hint { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+/* 模型胶囊嵌入输入框卡片底部（对标 DSH：输入区自带模型/工具行） */
+.composer-models {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  border-top: 1px solid var(--border); margin-top: 2px; padding: 7px 8px 2px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.composer-models-hint { font-size: 11px; color: var(--text-3); white-space: nowrap; }
 .model-pill {
   flex: none; display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--blue-2); border: 1px solid rgba(62,150,255,0.35);
@@ -559,24 +565,26 @@ svg { flex: none; }
       <div class="timeline" id="timeline"></div>
       <footer class="inputbar">
         <div class="attach-row hidden" id="attachRow"></div>
-        <div class="composer-tools hidden" id="composerTools">
-          <button class="model-pill" id="modelBtn" type="button" title="切换模型">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <span id="modelBtnLabel">模型</span>
-            <svg class="mc-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <span class="composer-tools-hint" id="composerModelHint"></span>
-        </div>
         <div class="composer">
-          <button class="add" id="addBtn" type="button" aria-label="添加图片" title="添加图片">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <input type="file" id="fileInput" accept="image/*" multiple hidden>
-          <textarea id="input" rows="1" enterkeyhint="send" placeholder="输入任务，交给电脑上的 DSH…" autocomplete="off" autocapitalize="sentences" autocorrect="off" spellcheck="false"></textarea>
-          <button class="send hidden" id="stopBtn" type="button" aria-label="停止" title="停止任务">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-          </button>
-          <button class="send" id="sendBtn" type="button" aria-label="发送"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+          <div class="composer-row">
+            <button class="add" id="addBtn" type="button" aria-label="添加图片" title="添加图片">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <input type="file" id="fileInput" accept="image/*" multiple hidden>
+            <textarea id="input" rows="1" enterkeyhint="send" placeholder="输入任务，交给电脑上的 DSH…" autocomplete="off" autocapitalize="sentences" autocorrect="off" spellcheck="false"></textarea>
+            <button class="send hidden" id="stopBtn" type="button" aria-label="停止" title="停止任务">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            </button>
+            <button class="send" id="sendBtn" type="button" aria-label="发送"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+          </div>
+          <div class="composer-models hidden" id="composerModels">
+            <button class="model-pill" id="modelBtn" type="button" title="切换模型">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span id="modelBtnLabel">模型</span>
+              <svg class="mc-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <span class="composer-models-hint" id="composerModelHint"></span>
+          </div>
         </div>
       </footer>
     </div>
@@ -1160,7 +1168,7 @@ svg { flex: none; }
       modelState.groups = d.groups || [];
       var lbl = modelState.current ? (modelState.current.model || '模型') : '模型';
       $('modelBtnLabel').textContent = lbl;
-      $('composerTools').classList.remove('hidden');
+      $('composerModels').classList.remove('hidden');
       var hint = $('composerModelHint');
       if (hint) hint.textContent = modelState.current && modelState.current.reasoningEffort
         ? ('· ' + modelState.current.reasoningEffort) : '';
@@ -1830,7 +1838,7 @@ svg { flex: none; }
       $('chatTitle').textContent = '新对话';
       $('chatSub').textContent = state.currentWs.path || '';
       $('timeline').textContent = '';
-      $('composerTools').classList.add('hidden'); // 新对话尚无会话，模型选择先隐藏
+      $('composerModels').classList.add('hidden'); // 新对话尚无会话，模型选择先隐藏
       renderDrawer();
       showPane('paneChat');
       $('input').focus();
