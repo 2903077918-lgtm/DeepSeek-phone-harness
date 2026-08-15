@@ -94,6 +94,35 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
       subscribedSeq.set(String(p.sessionId), Number(p.lastSeq) || 0);
       return;
     }
+    // 已解决帧：清除 pending（approval/resolved 与 question/resolved）
+    if (frame.method === 'approval/resolved' || (p && p.type === 'approval/resolved')) {
+      const aid = String((p && p.approvalId) || '');
+      if (aid) pending.delete(aid);
+      return;
+    }
+    if (frame.method === 'question/resolved' || (p && p.type === 'question/resolved')) {
+      const qrpc = String((p && p.questionRpcId) || '');
+      if (qrpc) pending.delete('q:' + qrpc);
+      return;
+    }
+    // 用户提问帧：question/requested（ask_user_question 工具）→ 与审批同表，kind='question'
+    // 帧形：{method:'question/requested', rpcId, payload:{type, sessionId, questions:[...]}}
+    const isQuestion = frame.method === 'question/requested' || (p && p.type === 'question/requested');
+    if (isQuestion) {
+      if (!p || typeof p !== 'object') return;
+      const rpcId = String(frame.rpcId || p.rpcId || '');
+      if (!rpcId) return;
+      pending.set('q:' + rpcId, {
+        kind: 'question',
+        rpcId,
+        questionKey: 'q:' + rpcId,
+        sessionId: String(p.sessionId || ''),
+        questions: Array.isArray(p.questions) ? p.questions : [],
+        receivedAt: new Date().toISOString(),
+      });
+      evictOldest();
+      return;
+    }
     const isApproval = frame.method === 'approval/requested' || (p && p.type === 'approval/requested');
     if (!isApproval) return;
     if (!p || typeof p !== 'object') return;
@@ -101,6 +130,7 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
     if (!approvalId) return;
     // 同 approvalId 重复到达 → set 覆盖并移到 Map 尾部（最新）
     pending.set(approvalId, {
+      kind: 'approval',
       rpcId: frame.rpcId,
       sessionId: p.sessionId,
       approvalId,
@@ -112,17 +142,30 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
     evictOldest();
   }
 
-  // 待审批列表，最新在前（Map 插入序 = 接收序，反转即最新在前）
+  // 待审批/待回答列表，最新在前（Map 插入序 = 接收序，反转即最新在前）
   function listPending() {
     return [...pending.values()].reverse();
   }
 
-  // 回传审批结果：用存储的 rpcId 调 /api/respond，成功才从表移除
-  async function respond({ approvalId, outcome } = {}) {
-    const rec = pending.get(approvalId);
-    if (!rec) return { ok: false, error: '未知 approvalId（可能已处理或已过期）' };
-    if (outcome !== 'allowed-once' && outcome !== 'rejected') {
-      return { ok: false, error: 'outcome 只允许 allowed-once / rejected' };
+  // 回传结果：审批用 {approvalId, outcome}，提问用 {questionKey, answer}。
+  // 用存储的 rpcId 调 /api/respond，成功才从表移除。
+  async function respond({ approvalId, outcome, questionKey, answer } = {}) {
+    const rec = questionKey ? pending.get(questionKey)
+      : approvalId ? pending.get(approvalId)
+      : undefined;
+    if (!rec) return { ok: false, error: '未知请求（可能已处理或已过期）' };
+    let value;
+    if (rec.kind === 'question') {
+      // 回答协议（与 Web GUI 一致）：value={sessionId, answer:{answers:[{id,selected[],custom?}]}}
+      if (!answer || !Array.isArray(answer.answers) || answer.answers.length === 0) {
+        return { ok: false, error: 'answer 必须为 {answers:[{id,selected,...}]} 数组' };
+      }
+      value = { sessionId: rec.sessionId, answer };
+    } else {
+      if (outcome !== 'allowed-once' && outcome !== 'rejected') {
+        return { ok: false, error: 'outcome 只允许 allowed-once / rejected' };
+      }
+      value = { sessionId: rec.sessionId, approvalId: rec.approvalId, outcome };
     }
     let resp;
     try {
@@ -132,10 +175,7 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
         body: JSON.stringify({
           type: 'client-response',
           rpcId: rec.rpcId,
-          result: {
-            ok: true,
-            value: { sessionId: rec.sessionId, approvalId: rec.approvalId, outcome },
-          },
+          result: { ok: true, value },
         }),
       });
     } catch (e) {
@@ -147,7 +187,7 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
     if (json && (json.ok === false || json.result?.ok === false)) {
       return { ok: false, error: JSON.stringify(json.error || json.result?.error || 'respond 被拒绝').slice(0, 300) };
     }
-    pending.delete(approvalId);
+    pending.delete(questionKey || approvalId);
     return { ok: true };
   }
 

@@ -75,15 +75,20 @@ export function eventToStreamItem(ev) {
 }
 
 // session.history events → 对话消息数组（/api/dsh-history 用）
+// 过滤 DSH 注入的 <system-reminder>（工作区指令）与 <runtime-context> 系统消息，避免污染对话视图
 export function historyToMessages(events) {
   const items = [];
+  const isNoise = (text) => {
+    const t = String(text || '').trim();
+    return t.startsWith('<system-reminder>') || t.startsWith('<runtime-context>') || t.startsWith('<compacted-summary>');
+  };
   for (const ev of events || []) {
     const e = ev && ev.event;
     if (!e) continue;
     const data = e.data || {};
     if (e.type === 'user/message' && Array.isArray(data.content)) {
       const text = data.content.filter((c) => c && c.type === 'text').map((c) => c.text || '').join('');
-      if (text) items.push({ role: 'user', text, time: isoTime(e.time) });
+      if (text && !isNoise(text)) items.push({ role: 'user', text, time: isoTime(e.time) });
     } else if (e.type === 'assistant/message') {
       const content = data.message && data.message.content;
       if (Array.isArray(content)) {

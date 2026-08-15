@@ -78,6 +78,13 @@ svg { flex: none; }
 }
 .drawer-item:hover { background: rgba(255,255,255,0.06); }
 .drawer-item.active { background: var(--blue-soft); }
+.drawer-del {
+  display: grid; place-items: center; width: 26px; height: 26px; flex: none;
+  border-radius: 7px; color: var(--text-3); opacity: 0;
+  transition: opacity 0.15s;
+}
+.drawer-item:hover .drawer-del { opacity: 1; }
+.drawer-del:hover { background: var(--red-soft); color: var(--red); }
 .drawer-item .ic { color: var(--text-2); display: grid; place-items: center; flex: none; }
 .drawer-item .main { flex: 1; min-width: 0; }
 .drawer-item .t { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -237,6 +244,13 @@ svg { flex: none; }
 .tool-line.run { color: #C6D2FF; }
 .tool-line.done { color: var(--green); }
 .tool-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
+.tool-stack { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+.stream-cursor {
+  display: inline-block; width: 7px; height: 14px; margin-left: 2px;
+  background: var(--blue-2); vertical-align: -2px;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
 .spin { display: inline-block; width: 9px; height: 9px; border: 1.5px solid rgba(95,167,255,0.3); border-top-color: var(--blue-2); border-radius: 50%; animation: spin 0.8s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .appr-card { border: 1px solid rgba(95,167,255,0.45); border-radius: var(--radius-sm); background: var(--bg-el); padding: 13px; }
@@ -244,6 +258,22 @@ svg { flex: none; }
 .appr-card .r { font-size: 12.5px; color: var(--text-2); margin-bottom: 10px; word-break: break-word; }
 .appr-card .row { display: flex; gap: 8px; }
 .appr-card .row .btn { min-height: 38px; font-size: 13px; }
+.appr-card .q-eyebrow { font-size: 11px; color: var(--text-2); margin-bottom: 2px; }
+.appr-card .q-title { color: var(--text); font-size: 13.5px; font-weight: 600; margin-bottom: 6px; }
+.appr-card .q-detail { font-size: 12px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; max-height: 140px; overflow: auto; }
+.appr-card .q-opts { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.appr-card .q-opt { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-sel); color: var(--text); cursor: pointer; font-size: 13px; }
+.appr-card .q-opt.on { border-color: var(--blue); background: rgba(62,150,255,0.12); }
+.appr-card .q-opt.primary.on { border-color: var(--gold); background: rgba(201,162,39,0.12); }
+.appr-card .q-opt-num { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-2); }
+.appr-card .q-opt.on .q-opt-num { background: var(--blue); border-color: var(--blue); color: #fff; }
+.appr-card .q-opt.primary.on .q-opt-num { background: var(--gold); border-color: var(--gold); color: #191919; }
+.appr-card .q-opt-body { display: flex; flex-direction: column; min-width: 0; }
+.appr-card .q-opt-label { font-weight: 600; }
+.appr-card .q-opt-desc { font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
+.appr-card .q-custom { margin-bottom: 10px; }
+.appr-card .q-input { width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-sel); color: var(--text); font-size: 13px; outline: none; }
+.appr-card .q-input:focus { border-color: var(--blue); }
 .empty-state { text-align: center; color: var(--text-2); padding: 60px 24px; font-size: 13.5px; line-height: 1.9; }
 .empty-state .big { font-size: 15px; font-weight: 600; color: var(--text); }
 
@@ -278,6 +308,16 @@ svg { flex: none; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.err { border-color: rgba(216,79,79,0.5); color: var(--red); }
+
+/* 图片查看器 */
+.img-viewer {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,0.92);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.img-viewer img { max-width: 100%; max-height: 90%; border-radius: 8px; }
+.asst-body img, .msg .bubble img { max-width: 100%; border-radius: 8px; margin: 6px 0; cursor: zoom-in; }
 
 /* ============ 设置页 ============ */
 .settings-card { background: var(--bg-el); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
@@ -495,6 +535,9 @@ svg { flex: none; }
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="img-viewer hidden" id="imgViewer" onclick="this.classList.add('hidden')">
+  <img id="imgViewerImg" alt="预览">
+</div>
 
 <script>
 (function () {
@@ -515,7 +558,8 @@ svg { flex: none; }
     running: false,
     streamTimer: null,
     streamBase: 0,
-    approvals: [],        // 待审批 [{approvalId,sessionId,toolName,reason}]
+    approvals: [],        // 待审批/待回答 [{kind,approvalId,questionKey,sessionId,toolName,reason,questions}]
+    questionDrafts: {},   // questionKey -> {selections:[], custom:''}（防重渲染丢选择）
     apprTimer: null,
     sessQuery: '',
   };
@@ -667,29 +711,51 @@ svg { flex: none; }
       return;
     }
     sessions.forEach(function (s) {
-      var it = document.createElement('button');
-      it.type = 'button';
+      var it = document.createElement('div');
       it.className = 'drawer-item' + (state.currentSess && s.sessionId === state.currentSess.sessionId ? ' active' : '');
+      it.style.cursor = 'pointer';
       var title = s.title || s.cwd || '会话';
       var meta = String(s.cwd || '');
       if (typeof s.messageCount === 'number') meta += (meta ? ' · ' : '') + s.messageCount + ' 条';
-      it.innerHTML =
-        '<span class="ic"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>' +
-        '<span class="main"><span class="t">' + esc(title) + '</span><span class="s">' + esc(meta) + '</span></span>';
-      it.addEventListener('click', function () { openSession(s); closeDrawer(); });
+      var main = document.createElement('div');
+      main.className = 'main';
+      main.innerHTML = '<span class="t">' + esc(title) + '</span><span class="s">' + esc(meta) + '</span>';
+      main.addEventListener('click', function () { openSession(s); closeDrawer(); });
+      var del = document.createElement('button');
+      del.className = 'drawer-del';
+      del.title = '删除会话';
+      del.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+      del.addEventListener('click', function () { deleteSession(s); });
+      it.appendChild(main);
+      it.appendChild(del);
       list.appendChild(it);
     });
+  }
+  // 删除会话（仅移除本地抽屉项；DSH 会话由电脑端管理）
+  function deleteSession(s) {
+    if (!confirm('删除会话 "' + (s.title || s.cwd || '') + '"？')) return;
+    state.sessions = state.sessions.filter(function (x) { return x.sessionId !== s.sessionId; });
+    if (state.currentSess && state.currentSess.sessionId === s.sessionId) {
+      state.currentSess = state.sessions[0] || null;
+      if (state.currentSess) openSession(state.currentSess);
+      else { state.msgs = []; $('timeline').textContent = ''; renderTimeline(); }
+    }
+    renderDrawer();
+    toast('已删除');
   }
 
   // ============ 对话 ============
   async function openSession(sess) {
     state.currentSess = sess;
-    state.msgs = [];
     $('chatTitle').textContent = sess.title || sess.cwd || '对话';
     $('chatSub').textContent = String(sess.cwd || '');
     $('timeline').textContent = '';
     renderDrawer();
     showPane('paneChat');
+    // 若正在发消息（running），保留进行中的消息不被历史覆盖
+    var preserveRunning = state.running && state.msgs.length;
+    var runningMsgs = preserveRunning ? state.msgs.slice() : [];
+    state.msgs = [];
     appendMsg('asst', '加载会话历史…', { plain: true });
     try {
       var d = await api('/api/dsh-history?sessionId=' + enc(sess.sessionId), { timeoutMs: 10000 });
@@ -697,11 +763,19 @@ svg { flex: none; }
       state.msgs = items.map(function (it) {
         return { role: it.role === 'user' ? 'user' : 'asst', text: it.text || '', time: it.time || it.at || '', kind: it.role };
       });
+      // 合并进行中的消息（用户新输入 + 流式助手）
+      if (preserveRunning) {
+        state.msgs = state.msgs.concat(runningMsgs.filter(function (m) {
+          return m.text === '' || m.streaming;  // 保留空助手（流式中）和进行中的
+        }));
+      }
       renderTimeline();
     } catch (e) {
-      state.msgs = [];
-      renderTimeline();
-      appendMsg('asst', '历史加载失败：' + e.message, { plain: true });
+      if (!preserveRunning) {
+        state.msgs = [];
+        renderTimeline();
+        appendMsg('asst', '历史加载失败：' + e.message, { plain: true });
+      }
     }
   }
   function renderTimeline() {
@@ -715,7 +789,9 @@ svg { flex: none; }
       return;
     }
     state.msgs.forEach(function (m) { tl.appendChild(msgEl(m)); });
-    if (state.running) tl.appendChild(pendingEl());
+    // 有流式消息时不显示额外 pending
+    var hasStreaming = state.msgs.some(function (m) { return m.streaming; });
+    if (state.running && !hasStreaming) tl.appendChild(pendingEl());
     renderApprovals();
     tl.scrollTop = tl.scrollHeight;
   }
@@ -739,10 +815,19 @@ svg { flex: none; }
     }
     var aw = document.createElement('div');
     aw.className = 'msg asst';
+    var toolsHtml = '';
+    if (m.tools && m.tools.length) {
+      toolsHtml = '<div class="tool-stack">' + m.tools.map(function (t) {
+        return '<span class="tool-line done"><span class="tool-dot"></span>' + esc(t.name) + '</span>';
+      }).join('') + '</div>';
+    }
     aw.innerHTML =
       '<div class="avatar">DSH</div>' +
       '<div class="bubble"><div class="asst-label">deepseekharness</div>' +
-      '<div class="asst-body">' + renderMarkdown(m.text || (m.err ? '错误：' + m.err : '')) + '</div>' +
+      (m.streaming ? '<div class="asst-body typing">' : '<div class="asst-body">') +
+      renderMarkdown(m.text || (m.err ? '错误：' + m.err : '')) +
+      (m.streaming ? '<span class="stream-cursor"></span>' : '') + '</div>' +
+      toolsHtml +
       '<div class="meta">' + (m.time ? esc(fmtTime(m.time)) + ' · ' : '') + '<button class="copy-btn" data-copy="' + esc(m.text || '') + '" type="button">复制</button></div></div>';
     aw.querySelector('.copy-btn').addEventListener('click', function (e) {
       e.stopPropagation();
@@ -797,6 +882,8 @@ svg { flex: none; }
     function inlineMd(s) {
       return s
         .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, '<img src="$2" alt="$1" onclick="document.getElementById(\'imgViewerImg\').src=this.src;document.getElementById(\'imgViewer\').classList.remove(\'hidden\')">')
+        .replace(/!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, '<img src="$2" alt="$1" onclick="document.getElementById(\'imgViewerImg\').src=this.src;document.getElementById(\'imgViewer\').classList.remove(\'hidden\')">')
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/\*([^*]+)\*/g, '<em>$1</em>')
         .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
@@ -817,33 +904,123 @@ svg { flex: none; }
     updateRunUI();
     renderTimeline();
 
-    var body = { task: text };
-    if (state.currentSess) body.sessionId = state.currentSess.sessionId;
     try {
-      var d = await api('/api/exec', { method: 'POST', body: JSON.stringify(body), timeoutMs: 10000 });
-      var r = (d && d.result) || {};
-      var asstMsg = {
-        role: 'asst', kind: 'asst', time: new Date().toISOString(),
-        ok: !!r.ok, text: r.stdout || '', err: r.stderr || '',
-      };
-      if (r.sessionId && !state.currentSess) {
-        // 新会话：加入抽屉
-        state.currentSess = { sessionId: r.sessionId, cwd: state.currentWs.path, title: firstLine(text, 22) };
-        state.sessions.unshift(state.currentSess);
-        renderDrawer();
-      }
+      var asstMsg = { role: 'asst', kind: 'asst', text: '', time: new Date().toISOString(), streaming: true };
       state.msgs.push(asstMsg);
-      state.running = false;
-      updateRunUI();
       renderTimeline();
-      refreshSessions();
+
+      if (state.currentSess) {
+        // 已有会话：dsh-continue 后台执行；events 流式 + 响应结果双保险
+        var sid = state.currentSess.sessionId;
+        state.streamBase = 0;
+        api('/api/events?sessionId=' + enc(sid) + '&afterSeq=0', { timeoutMs: 6000 })
+          .then(function (d0) { state.streamBase = (d0 && typeof d0.lastSeq === 'number') ? d0.lastSeq : 0; })
+          .catch(function () { state.streamBase = 0; })
+          .then(function () {
+            _streamIdle = 0;
+            state.streamTimer = setInterval(function () { pollStream(sid, asstMsg); }, 800);
+          });
+        api('/api/dsh-continue', {
+          method: 'POST',
+          body: JSON.stringify({ sessionId: sid, task: text }),
+          timeoutMs: 60000,
+        }).then(function (d) {
+          // dsh-continue 返回最终结果：直接填充（流式可能因时序错过）
+          var r = (d && d.result) || {};
+          if (r && r.stdout && !asstMsg.text) {
+            asstMsg.text = r.stdout;
+          }
+          if (r && r.stderr) asstMsg.err = r.stderr;
+          asstMsg.ok = !!r.ok;
+          if (state.streamTimer) { clearInterval(state.streamTimer); state.streamTimer = null; }
+          state.running = false; updateRunUI();
+          _streamIdle = 0;
+          asstMsg.streaming = false;
+          renderTimeline();
+          toast(r.ok === false ? '任务失败' : '任务完成');
+          refreshSessions();
+        }).catch(function (e) {
+          if (state.streamTimer) { clearInterval(state.streamTimer); state.streamTimer = null; }
+          state.running = false; updateRunUI();
+          asstMsg.err = e.message; asstMsg.streaming = false;
+          renderTimeline();
+          toast('发送失败：' + e.message, true);
+        });
+      } else {
+        // 新会话：exec 创建
+        var d = await api('/api/exec', { method: 'POST', body: JSON.stringify({ task: text }), timeoutMs: 10000 });
+        var r = (d && d.result) || {};
+        if (r.sessionId) {
+          state.currentSess = { sessionId: r.sessionId, cwd: state.currentWs.path, title: firstLine(text, 22) };
+          state.sessions.unshift(state.currentSess);
+          renderDrawer();
+          // 转流式
+          state.streamBase = 0;
+          state.streamTimer = setInterval(function () { pollStream(state.currentSess.sessionId, asstMsg); }, 800);
+        } else {
+          asstMsg.text = r.stdout || ''; asstMsg.ok = !!r.ok; asstMsg.err = r.stderr || ''; asstMsg.streaming = false;
+          state.running = false; updateRunUI();
+          renderTimeline();
+        }
+      }
     } catch (e) {
-      state.running = false;
-      updateRunUI();
+      state.running = false; updateRunUI();
       appendMsg('asst', '', { plain: true, err: e.message });
       renderTimeline();
       toast('发送失败：' + e.message, true);
     }
+  }
+
+  // 流式轮询（打字机效果 + 工具活动卡）
+  var _streamIdle = 0;
+  async function pollStream(sessionId, asstMsg) {
+    try {
+      var d = await api('/api/events?sessionId=' + enc(sessionId) + '&afterSeq=' + state.streamBase, { timeoutMs: 6000 });
+      var items = (d && d.items) || [];
+      if (typeof d.lastSeq === 'number') state.streamBase = Math.max(state.streamBase, d.lastSeq);
+      if (!items.length) {
+        // 连续空闲判定结束（DSH 事件流无显式 done；历史出现结果即可视为完成）
+        _streamIdle++;
+        if (_streamIdle >= 20 && state.streamBase > 0) finishStream(asstMsg);
+        return;
+      }
+      _streamIdle = 0;
+      items.forEach(function (ev) {
+        var type = ev.type || '';
+        var kind = ev.kind || '';
+        if (type === 'assistant/chunk' && kind === 'text') { asstMsg.text += ev.text || ''; }
+        else if (type === 'assistant/message' && kind === 'text') { asstMsg.text = ev.text || asstMsg.text; }
+        else if (type === 'tool/call' || (kind === 'tool' && type.indexOf('tool') > -1)) {
+          asstMsg.tools = asstMsg.tools || [];
+          asstMsg.tools.push({ name: ev.text || '工具', done: true });
+        }
+      });
+      renderTimeline();
+    } catch (e) { /* 网络抖动忽略 */ }
+  }
+  function finishStream(asstMsg) {
+    if (!asstMsg.streaming) return;
+    asstMsg.streaming = false;
+    if (state.streamTimer) { clearInterval(state.streamTimer); state.streamTimer = null; }
+    state.running = false; updateRunUI();
+    _streamIdle = 0;
+    renderTimeline();
+    // DSH 已完成写入：重载历史拿最终结果
+    if (state.currentSess) {
+      api('/api/dsh-history?sessionId=' + enc(state.currentSess.sessionId), { timeoutMs: 8000 })
+        .then(function (d) {
+          var items = (d && d.items) || [];
+          state.msgs = items.map(function (it) {
+            return { role: it.role === 'user' ? 'user' : 'asst', text: it.text || '', time: it.time || it.at || '', kind: it.role };
+          });
+          renderTimeline();
+          toast('任务完成');
+        })
+        .catch(function () { toast('任务完成'); });
+    } else {
+      toast('任务完成');
+    }
+    refreshSessions();
   }
   function firstLine(s, n) { var t = String(s || '').split('\n')[0].trim(); return t.length > n ? t.slice(0, n) + '…' : t; }
 
@@ -858,11 +1035,15 @@ svg { flex: none; }
     try {
       var d = await api('/api/approvals', { timeoutMs: 5000 });
       state.approvals = (d && d.items) || [];
+      // 清理已消失提问的草稿
+      var live = {};
+      state.approvals.forEach(function (a) { if (a.questionKey) live[a.questionKey] = 1; });
+      Object.keys(state.questionDrafts).forEach(function (k) { if (!live[k]) delete state.questionDrafts[k]; });
       renderApprovals();
     } catch (e) { /* 网络抖动忽略 */ }
   }
   function renderApprovals() {
-    // 时间线里渲染待审批卡（codex-relay approvalRequest 卡片样式）
+    // 时间线里渲染待审批卡 + 待回答提问卡（codex-relay approvalRequest 卡片样式）
     var tl = $('timeline');
     if (!tl) return;
     // 移除旧的审批卡（只清当前动态加的，不碰历史消息）
@@ -876,18 +1057,91 @@ svg { flex: none; }
     mine.forEach(function (a) {
       var card = document.createElement('div');
       card.className = 'appr-card';
-      card.innerHTML =
-        '<div class="t"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> 需要授权</div>' +
-        '<div class="r">' + esc(a.reason || a.toolName || '该操作需要你的允许') + '</div>' +
-        '<div class="row">' +
-        '<button class="btn" data-act="allow">允许一次</button>' +
-        '<button class="btn ghost" data-act="reject">拒绝</button>' +
-        '</div>';
-      card.querySelector('[data-act="allow"]').addEventListener('click', function () { respondApproval(a, 'allowed-once'); });
-      card.querySelector('[data-act="reject"]').addEventListener('click', function () { respondApproval(a, 'rejected'); });
+      if (a.kind === 'question') {
+        renderQuestionCard(card, a);
+      } else {
+        card.innerHTML =
+          '<div class="t"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> 需要授权</div>' +
+          '<div class="r">' + esc(a.reason || a.toolName || '该操作需要你的允许') + '</div>' +
+          '<div class="row">' +
+          '<button class="btn" data-act="allow">允许一次</button>' +
+          '<button class="btn ghost" data-act="reject">拒绝</button>' +
+          '</div>';
+        card.querySelector('[data-act="allow"]').addEventListener('click', function () { respondApproval(a, 'allowed-once'); });
+        card.querySelector('[data-act="reject"]').addEventListener('click', function () { respondApproval(a, 'rejected'); });
+      }
       tl.appendChild(card);
       tl.scrollTop = tl.scrollHeight;
     });
+  }
+  // ---- ask_user_question 提问卡（DSH 标准 preset 的 agent 会反问，必须能回答否则任务卡死）----
+  function qDraft(a) {
+    var d = state.questionDrafts[a.questionKey];
+    if (!d) { d = { selections: [], custom: '' }; state.questionDrafts[a.questionKey] = d; }
+    return d;
+  }
+  function renderQuestionCard(card, a) {
+    var qs = a.questions || [];
+    var q = qs[0] || { question: 'Agent 询问' };
+    var draft = qDraft(a);
+    var intentApprove = null;
+    if (q.intent && q.intent.kind === 'plan-review') intentApprove = q.intent.approve;
+    var opts = q.options || [];
+    var head = '';
+    if (q.header) head = '<div class="q-eyebrow">' + esc(q.header) + '</div>';
+    var detail = q.detail ? '<div class="q-detail">' + esc(q.detail) + '</div>' : '';
+    var optHtml = opts.map(function (o, i) {
+      var sel = draft.selections.indexOf(o.label) >= 0;
+      return '<button type="button" class="q-opt' + (sel ? ' on' : '') + (intentApprove === o.label ? ' primary' : '') + '" data-i="' + i + '">' +
+        '<span class="q-opt-num">' + (q.multiSelect ? (sel ? '&#10003;' : '') : (i + 1)) + '</span>' +
+        '<span class="q-opt-body"><span class="q-opt-label">' + esc(o.label) + '</span>' +
+        (o.description ? '<span class="q-opt-desc">' + esc(o.description) + '</span>' : '') + '</span></button>';
+    }).join('');
+    card.innerHTML =
+      '<div class="t"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#C9A227" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg> 需要你回答</div>' +
+      head + '<div class="r q-title">' + esc(q.question) + '</div>' + detail +
+      '<div class="q-opts">' + optHtml + '</div>' +
+      '<div class="q-custom"><input type="text" class="q-input" placeholder="输入你的答案" value="' + esc(draft.custom) + '"></div>' +
+      '<div class="row">' +
+      '<button class="btn ghost" data-act="skip">跳过本题</button>' +
+      '<button class="btn" data-act="submit">提交回答</button>' +
+      '</div>';
+    // 选项切换
+    card.querySelectorAll('.q-opt').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var label = opts[Number(b.dataset.i)].label;
+        if (q.multiSelect) {
+          var at = draft.selections.indexOf(label);
+          if (at >= 0) draft.selections.splice(at, 1); else draft.selections.push(label);
+        } else {
+          draft.selections = [label];
+        }
+        renderQuestionCard(card, a); // 重绘保持卡片最新（不重建整表）
+      });
+    });
+    // 自定义输入
+    var inp = card.querySelector('.q-input');
+    inp.addEventListener('input', function () { draft.custom = inp.value; });
+    card.querySelector('[data-act="skip"]').addEventListener('click', function () {
+      respondQuestion(a, qs.map(function (qq) { return { id: qq.id, selected: [] }; }));
+    });
+    card.querySelector('[data-act="submit"]').addEventListener('click', function () {
+      var answers = qs.map(function (qq) {
+        var sel = draft.selections;
+        var custom = draft.custom.trim();
+        if (custom && !(qq.multiSelect && sel.length)) return { id: qq.id, custom: custom };
+        return { id: qq.id, selected: sel };
+      });
+      respondQuestion(a, answers);
+    });
+  }
+  async function respondQuestion(a, answers) {
+    try {
+      await api('/api/approvals', { method: 'POST', body: JSON.stringify({ questionKey: a.questionKey, answer: { answers: answers } }) });
+      delete state.questionDrafts[a.questionKey];
+      toast('已提交回答');
+      await pollApprovals();
+    } catch (e) { toast('提交失败：' + e.message, true); }
   }
   async function respondApproval(a, outcome) {
     try {

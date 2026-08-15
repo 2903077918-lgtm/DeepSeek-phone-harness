@@ -410,7 +410,7 @@
     overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 18px;
     padding: 16px 14px 14px;
   }
   .chat::-webkit-scrollbar { width: 6px; }
@@ -464,7 +464,7 @@
     color: #F2F2F2; border-radius: 18px 18px 4px 18px;
     padding: 9px 12px;
   }
-  /* 助手消息（codex-relay 风格：无背景全宽 + Codex 标签） */
+  /* 助手消息（codex-relay 风格：浅色卡片背景，视觉分隔） */
   .msg.asst {
     display: flex; flex-direction: row; align-items: flex-start; flex-wrap: wrap;
     gap: 8px; max-width: 100%; align-self: flex-start;
@@ -478,8 +478,10 @@
   }
   .msg.asst > .bubble {
     flex: 1 1 auto; min-width: 0;
-    background: transparent; border: none; border-radius: 0;
-    padding: 0; -webkit-backdrop-filter: none; backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    padding: 12px 14px;
   }
   /* 空态居中引导 */
   .empty-state {

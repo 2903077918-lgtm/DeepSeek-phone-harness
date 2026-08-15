@@ -142,13 +142,16 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
       }
       if (req.method === 'GET' && url.pathname === '/api/approvals') {
         if (!auth(req, res)) return;
-        // 待审批列表（最新在前）；只暴露手机端需要的字段，rpcId 为内部实现细节不外泄
+        // 待审批 + 待回答提问（最新在前）；rpcId 为内部实现细节不外泄，提问用 questionKey 标识
         const items = relay.listPending().map((r) => ({
-          approvalId: r.approvalId,
+          kind: r.kind || 'approval',
+          approvalId: r.kind === 'approval' ? r.approvalId : undefined,
+          questionKey: r.kind === 'question' ? r.questionKey : undefined,
           sessionId: r.sessionId,
           toolName: r.toolName,
           callId: r.callId,
           reason: r.reason,
+          questions: r.kind === 'question' ? r.questions : undefined,
           receivedAt: r.receivedAt,
         }));
         sendJson(res, 200, { ok: true, items });
@@ -157,6 +160,22 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
       if (req.method === 'POST' && url.pathname === '/api/approvals') {
         if (!auth(req, res)) return;
         const body = await readBody(req);
+        const questionKey = String(body.questionKey || '').trim();
+        if (questionKey) {
+          // 回答 ask_user_question：{questionKey, answer:{answers:[{id,selected[],custom?}]}}
+          const answer = body.answer;
+          if (!answer || !Array.isArray(answer.answers) || !answer.answers.length) {
+            sendJson(res, 400, { ok: false, accepted: false, error: 'answer 必须为 {answers:[{id,selected,...}]} 数组' });
+            return;
+          }
+          const result = await relay.respond({ questionKey, answer });
+          if (!result.ok) {
+            sendJson(res, 404, { ok: false, accepted: false, error: result.error });
+            return;
+          }
+          sendJson(res, 200, { ok: true, accepted: true });
+          return;
+        }
         const approvalId = String(body.approvalId || '').trim();
         const outcome = String(body.outcome || '').trim();
         if (!approvalId) { sendJson(res, 400, { ok: false, accepted: false, error: 'approvalId 不能为空' }); return; }
