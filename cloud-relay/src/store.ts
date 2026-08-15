@@ -139,7 +139,8 @@ export async function appendAudit(
 // Cloudflare Workers 的 node:compat 不提供 scryptSync/createHash，故使用标准 WebCrypto：
 //   PBKDF2(SHA-256) 派生密码哈希；crypto.subtle.digest 做通用 SHA-256（配对码）。
 
-const PBKDF2_ITER = 120000;
+// Cloudflare Workers 的 WebCrypto PBKDF2 限制迭代次数 ≤ 100000，用 100000（旧哈希按存储的 iter 验证）
+const PBKDF2_ITER = 100000;
 const PBKDF2_KEYLEN = 32; // 派生 32 字节
 
 function hex(buf: ArrayBuffer | Uint8Array): string {

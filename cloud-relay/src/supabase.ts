@@ -78,5 +78,8 @@ export class SupabaseClient {
 }
 
 export function createSupabase(env: SupabaseEnv): SupabaseClient {
-  return new SupabaseClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  // 防御：secret 值可能混入 BOM/空白（.dev.vars 带 BOM 时常见），trim 并去掉 \uFEFF
+  const url = (env.SUPABASE_URL || '').replace(/^\uFEFF/, '').trim();
+  const key = (env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/^\uFEFF/, '').trim();
+  return new SupabaseClient(url, key);
 }

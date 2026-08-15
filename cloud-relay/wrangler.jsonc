@@ -13,5 +13,8 @@
   "d1_databases": [],
   "triggers": {
     "crons": []
-  }
+  },
+  "routes": [
+    { "pattern": "relay.axyntara.cn", "custom_domain": true }
+  ]
 }
