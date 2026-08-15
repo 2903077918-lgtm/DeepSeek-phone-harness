@@ -118,7 +118,8 @@ svg { flex: none; }
 .brand { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .brand .whale { width: 22px; height: 22px; color: var(--gold); }
 .brand-name { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.brand-sub { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand-sub { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.brand-sub:hover { color: var(--text); }
 .conn-pill {
   display: flex; align-items: center; gap: 6px; flex: none;
   background: var(--bg-el); border: 1px solid var(--border);
@@ -304,13 +305,22 @@ svg { flex: none; }
 
 /* composer */
 .inputbar { border-top: 1px solid var(--border); background: var(--bg); padding: 8px 12px calc(var(--safe-bottom) + 8px); flex: none; }
+.attach-row { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; -webkit-overflow-scrolling: touch; }
+.attach-item { position: relative; flex: none; width: 56px; height: 56px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-strong); background: var(--bg-el); }
+.attach-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.attach-item .x { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.65); color: #fff; display: grid; place-items: center; font-size: 10px; border: none; cursor: pointer; }
 .composer {
   display: flex; align-items: flex-end; gap: 6px;
   background: var(--bg-el); border: 1px solid var(--border-strong);
-  border-radius: 18px; padding: 6px 6px 6px 14px;
+  border-radius: 18px; padding: 6px 6px 6px 10px;
   transition: border-color 0.15s;
 }
 .composer:focus-within { border-color: var(--blue); }
+.composer .add {
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--text-2); margin-bottom: 2px;
+}
+.composer .add:active { transform: scale(0.9); }
 .composer textarea {
   flex: 1; min-width: 0; min-height: 38px; max-height: 120px;
   resize: none; background: transparent; border: none; color: var(--text);
@@ -324,6 +334,38 @@ svg { flex: none; }
 }
 .composer .send:active { transform: scale(0.9); }
 .composer .send:disabled { background: var(--bg-sel); color: var(--text-3); }
+
+/* 模型胶囊 + 底部选择面板（对标 DSH Web GUI） */
+.model-pill {
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; color: var(--blue-2); border: 1px solid rgba(62,150,255,0.35);
+  background: rgba(62,150,255,0.08); border-radius: 999px; padding: 5px 10px;
+}
+.model-pill:active { transform: scale(0.96); }
+.sheet-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 60; display: flex; align-items: flex-end; }
+.sheet { width: 100%; max-height: 70vh; background: var(--bg-drawer); border-radius: 20px 20px 0 0; display: flex; flex-direction: column; overflow: hidden; }
+.sheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; }
+.sheet-title { font-size: 15px; font-weight: 700; }
+.sheet-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 14px calc(16px + var(--safe-bottom)); }
+.model-group { margin-top: 14px; }
+.model-group .gname { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.model-item {
+  width: 100%; text-align: left; display: flex; align-items: center; gap: 10px;
+  padding: 11px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--bg-el); margin-bottom: 6px; color: var(--text); font-size: 13.5px;
+}
+.model-item.on { border-color: var(--blue); background: rgba(62,150,255,0.1); }
+.model-item .m-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-item .m-desc { font-size: 11px; color: var(--text-2); }
+.model-item .m-check { flex: none; color: var(--blue-2); }
+
+/* 思考过程折叠块（对标 DSH 的推理过程展示） */
+.think-block { margin: 6px 0 8px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.03); overflow: hidden; }
+.think-block summary { list-style: none; display: flex; align-items: center; gap: 7px; padding: 7px 10px; font-size: 11.5px; color: var(--text-2); cursor: pointer; user-select: none; }
+.think-block summary::-webkit-details-marker { display: none; }
+.think-block summary .tw { flex: 1; }
+.think-block[open] summary { border-bottom: 1px solid var(--border); }
+.think-body { padding: 8px 12px; font-size: 12px; line-height: 1.65; color: var(--text-2); white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow: auto; }
 
 .toast {
   position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%) translateY(16px);
@@ -456,7 +498,7 @@ svg { flex: none; }
             <input id="tokenInput" type="password" placeholder="粘贴 Token" autocomplete="off" autocapitalize="off" spellcheck="false">
           </div>
           <button class="btn" id="connectBtn" type="button">连 接</button>
-          <div class="hint" id="connectHint">连接后从左侧选择工作区开始</div>
+          <div class="hint" id="connectHint">连接后直接开始对话，点顶栏工作区名可切换项目</div>
         </div>
       </div>
     </div>
@@ -481,6 +523,10 @@ svg { flex: none; }
     <div class="pane hidden" id="paneChat">
       <div class="chat-head">
         <div class="info"><div class="t" id="chatTitle">对话</div><div class="s" id="chatSub"></div></div>
+        <button class="model-pill hidden" id="modelBtn" type="button" title="切换模型">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span id="modelBtnLabel">模型</span>
+        </button>
         <button class="btn ghost sm" id="wsSwitchBtn" type="button">切换工作区</button>
       </div>
       <div class="conn-banner hidden" id="connBanner">
@@ -490,7 +536,12 @@ svg { flex: none; }
       </div>
       <div class="timeline" id="timeline"></div>
       <footer class="inputbar">
+        <div class="attach-row hidden" id="attachRow"></div>
         <div class="composer">
+          <button class="add" id="addBtn" type="button" aria-label="添加图片" title="添加图片">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <input type="file" id="fileInput" accept="image/*" multiple hidden>
           <textarea id="input" rows="1" enterkeyhint="send" placeholder="输入任务，交给电脑上的 DSH…" autocomplete="off" autocapitalize="sentences" autocorrect="off" spellcheck="false"></textarea>
           <button class="send hidden" id="stopBtn" type="button" aria-label="停止" title="停止任务">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
@@ -498,6 +549,14 @@ svg { flex: none; }
           <button class="send" id="sendBtn" type="button" aria-label="发送"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
         </div>
       </footer>
+    </div>
+
+    <!-- 模型选择面板（对标 DSH Web GUI 的模型选择） -->
+    <div class="sheet-mask hidden" id="modelMask">
+      <div class="sheet" id="modelSheet">
+        <div class="sheet-head"><div class="sheet-title">选择模型</div><button class="icon-btn" id="modelClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+        <div class="sheet-body" id="modelList"></div>
+      </div>
     </div>
 
     <!-- 代码查看页 -->
@@ -617,8 +676,8 @@ svg { flex: none; }
   function save(key, val) { localStorage.setItem(LS + key, JSON.stringify(val)); }
 
   var state = {
-    base: localStorage.getItem(LS + 'base') || '',
-    token: localStorage.getItem(LS + 'token') || '',
+    base: load('base', '') || '',   // save() 是 JSON.stringify 存储，读取必须 JSON.parse
+    token: load('token', '') || '',
     ws: [], wsIndex: 0,
     sessions: [],
     currentWs: null,
@@ -692,15 +751,35 @@ svg { flex: none; }
     try {
       var st = await api('/api/status', { timeoutMs: 8000 });
       setConn(true, (st.agent || '电脑') + (st.version ? ' v' + st.version : ''));
-      $('connectHint').textContent = '已连接，请选择工作区';
+      $('connectHint').textContent = '已连接';
       $('connectHint').className = 'hint';
       $('setMachine').textContent = st.agent || '-';
       $('setVersion').textContent = 'v' + (st.version || '-');
       renderSettings();
       startApprovalPoll();
       await loadWorkspaces();
-      showPane('paneWorkspaces');
-      renderDrawer();
+      // 对话界面优先：恢复上次工作区直接进对话页；没有则进对话页空态（顶栏点工作区名选择）
+      var savedWsId = load('wsId', '');
+      var savedIdx = -1;
+      if (savedWsId) {
+        for (var wi = 0; wi < state.ws.length; wi++) {
+          if (state.ws[wi].workspaceId === savedWsId) { savedIdx = wi; break; }
+        }
+      }
+      if (savedIdx >= 0) {
+        selectWorkspace(savedIdx);
+      } else {
+        state.currentWs = null;
+        state.wsIndex = 0;
+        $('wsLabel').textContent = '未选择工作区';
+        $('chatTitle').textContent = '对话';
+        $('chatSub').textContent = '';
+        $('timeline').textContent = '';
+        state.msgs = [];
+        appendMsg('asst', '点击顶栏「未选择工作区」选择电脑上的项目开始对话', { plain: true });
+        showPane('paneChat');
+        renderDrawer();
+      }
     } catch (e) {
       setConn(false, '连接失败');
       $('connectHint').textContent = e.message;
@@ -737,6 +816,7 @@ svg { flex: none; }
     state.wsIndex = i;
     state.currentWs = ws;
     state.currentSess = null;
+    save('wsId', ws.workspaceId); // 记忆上次工作区，下次连接直接进对话页
     $('wsLabel').textContent = ws.title || ws.path;
     $('chatTitle').textContent = ws.title || ws.path;
     $('chatSub').textContent = '';
@@ -842,6 +922,7 @@ svg { flex: none; }
     $('timeline').textContent = '';
     renderDrawer();
     showPane('paneChat');
+    loadModel(sess.sessionId); // 对标 DSH Web GUI：加载当前会话模型
     // 若正在发消息（running），保留进行中的消息不被历史覆盖
     var preserveRunning = state.running && state.msgs.length;
     var runningMsgs = preserveRunning ? state.msgs.slice() : [];
@@ -905,15 +986,26 @@ svg { flex: none; }
     }
     var aw = document.createElement('div');
     aw.className = 'msg asst';
+    var thinkHtml = '';
+    if (m.thinking && m.thinking.trim()) {
+      thinkHtml = '<details class="think-block"' + (m.streaming ? ' open' : '') + '>' +
+        '<summary><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><polyline points="12 6 12 12 16 14"/></svg>' +
+        '<span class="tw">思考过程</span>' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></summary>' +
+        '<div class="think-body">' + esc(m.thinking) + '</div></details>';
+    }
     var toolsHtml = '';
     if (m.tools && m.tools.length) {
       toolsHtml = '<div class="tool-stack">' + m.tools.map(function (t) {
-        return '<span class="tool-line done"><span class="tool-dot"></span>' + esc(t.name) + '</span>';
+        return '<span class="tool-line done"><span class="tool-dot"></span>' +
+          '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>' +
+          esc(t.name) + '</span>';
       }).join('') + '</div>';
     }
     aw.innerHTML =
       '<div class="avatar">DSH</div>' +
       '<div class="bubble"><div class="asst-label">deepseekharness</div>' +
+      thinkHtml +
       (m.streaming ? '<div class="asst-body typing">' : '<div class="asst-body">') +
       renderMarkdown(m.text || (m.err ? '错误：' + m.err : '')) +
       (m.streaming ? '<span class="stream-cursor"></span>' : '') + '</div>' +
@@ -980,6 +1072,105 @@ svg { flex: none; }
     }
   }
 
+  // ============ 模型选择（对标 DSH Web GUI） ============
+  var modelState = { current: null, groups: [] };
+  async function loadModel(sid) {
+    if (!sid) return;
+    try {
+      var d = await api('/api/dsh-models?sessionId=' + enc(sid), { timeoutMs: 8000 });
+      if (!d || !d.ok) return;
+      modelState.current = d.current || null;
+      modelState.groups = d.groups || [];
+      var lbl = modelState.current ? (modelState.current.model || '模型') : '模型';
+      $('modelBtnLabel').textContent = lbl;
+      $('modelBtn').classList.remove('hidden');
+    } catch (e) { /* 模型接口不可用则隐藏 */ }
+  }
+  function openModelSheet() {
+    var list = $('modelList');
+    list.textContent = '';
+    if (!modelState.groups.length) {
+      list.innerHTML = '<div class="empty" style="padding:30px 10px">暂无可选模型</div>';
+    }
+    modelState.groups.forEach(function (g) {
+      if (!g.models || !g.models.length) return;
+      var sec = document.createElement('div');
+      sec.className = 'model-group';
+      var gname = document.createElement('div');
+      gname.className = 'gname';
+      gname.textContent = g.name || g.id || '模型';
+      sec.appendChild(gname);
+      g.models.forEach(function (m) {
+        var it = document.createElement('button');
+        it.type = 'button';
+        var cur = modelState.current;
+        var on = cur && cur.model === m.id && cur.provider === g.id;
+        it.className = 'model-item' + (on ? ' on' : '');
+        it.innerHTML = '<span class="m-name">' + esc(m.name || m.id) + '</span>' +
+          (m.description ? '<span class="m-desc">' + esc(m.description) + '</span>' : '') +
+          (on ? '<span class="m-check">&#10003;</span>' : '');
+        it.addEventListener('click', function () { selectModel(g.id, m.id); });
+        sec.appendChild(it);
+      });
+      list.appendChild(sec);
+    });
+    $('modelMask').classList.remove('hidden');
+  }
+  async function selectModel(provider, model) {
+    if (!state.currentSess) { toast('请先打开一个会话', true); return; }
+    try {
+      var d = await api('/api/dsh-models', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId: state.currentSess.sessionId, provider: provider, model: model }),
+        timeoutMs: 15000,
+      });
+      if (d && d.ok && d.selected) {
+        modelState.current = d.selected;
+        $('modelBtnLabel').textContent = d.selected.model || model;
+        toast('已切换模型：' + (d.selected.model || model));
+      }
+      $('modelMask').classList.add('hidden');
+    } catch (e) { toast('切换模型失败：' + e.message, true); }
+  }
+
+  // ============ 图片附件（+ 添加，对标 DSH Web GUI） ============
+  var attach = []; // [{name, mediaType, data(base64)}]
+  function compressImage(file) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function () {
+        var MAX = 1024;
+        var w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          var k = Math.min(MAX / w, MAX / h);
+          w = Math.round(w * k); h = Math.round(h * k);
+        }
+        var cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        var data = cv.toDataURL('image/jpeg', 0.82).split(',')[1];
+        URL.revokeObjectURL(url);
+        resolve({ name: file.name || 'image.jpg', mediaType: 'image/jpeg', data: data });
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('图片读取失败')); };
+      img.src = url;
+    });
+  }
+  function renderAttachRow() {
+    var row = $('attachRow');
+    row.textContent = '';
+    if (!attach.length) { row.classList.add('hidden'); return; }
+    row.classList.remove('hidden');
+    attach.forEach(function (a, i) {
+      var it = document.createElement('div');
+      it.className = 'attach-item';
+      it.innerHTML = '<img src="data:' + a.mediaType + ';base64,' + a.data + '" alt=""><button class="x" type="button">&#10005;</button>';
+      it.querySelector('.x').addEventListener('click', function () { attach.splice(i, 1); renderAttachRow(); });
+      row.appendChild(it);
+    });
+  }
+
   // ============ 发送 ============
   async function sendMessage() {
     var input = $('input');
@@ -1002,6 +1193,7 @@ svg { flex: none; }
       if (state.currentSess) {
         // 已有会话：dsh-continue 后台执行；events 流式 + 响应结果双保险
         var sid = state.currentSess.sessionId;
+        var images = attach.length ? attach.slice() : undefined;
         state.streamBase = 0;
         api('/api/events?sessionId=' + enc(sid) + '&afterSeq=0', { timeoutMs: 6000 })
           .then(function (d0) { state.streamBase = (d0 && typeof d0.lastSeq === 'number') ? d0.lastSeq : 0; })
@@ -1012,10 +1204,11 @@ svg { flex: none; }
           });
         api('/api/dsh-continue', {
           method: 'POST',
-          body: JSON.stringify({ sessionId: sid, task: text }),
+          body: JSON.stringify({ sessionId: sid, task: text, images: images }),
           timeoutMs: 60000,
         }).then(function (d) {
           // dsh-continue 返回最终结果：直接填充（流式可能因时序错过）
+          attach = []; renderAttachRow();
           var r = (d && d.result) || {};
           if (r && r.stdout && !asstMsg.text) {
             asstMsg.text = r.stdout;
@@ -1027,7 +1220,15 @@ svg { flex: none; }
           _streamIdle = 0;
           asstMsg.streaming = false;
           renderTimeline();
-          toast(r.ok === false ? '任务失败' : '任务完成');
+          if (r.ok === false) {
+            if (images && images.length && /does not support image/i.test(r.stderr || '')) {
+              toast('当前模型不支持图片，点顶部模型名换一个试试', true);
+            } else {
+              toast('任务失败');
+            }
+          } else {
+            toast('任务完成');
+          }
           refreshSessions();
         }).catch(function (e) {
           if (state.streamTimer) { clearInterval(state.streamTimer); state.streamTimer = null; }
@@ -1044,6 +1245,7 @@ svg { flex: none; }
           state.currentSess = { sessionId: r.sessionId, cwd: state.currentWs.path, title: firstLine(text, 22) };
           state.sessions.unshift(state.currentSess);
           renderDrawer();
+          loadModel(state.currentSess.sessionId);
           // 转流式
           state.streamBase = 0;
           state.streamTimer = setInterval(function () { pollStream(state.currentSess.sessionId, asstMsg); }, 800);
@@ -1080,9 +1282,16 @@ svg { flex: none; }
         var kind = ev.kind || '';
         if (type === 'assistant/chunk' && kind === 'text') { asstMsg.text += ev.text || ''; }
         else if (type === 'assistant/message' && kind === 'text') { asstMsg.text = ev.text || asstMsg.text; }
+        else if (type === 'assistant/chunk' && kind === 'thinking') {
+          asstMsg.thinking = (asstMsg.thinking || '') + (ev.text || '');
+          if (asstMsg.thinking.length > 6000) asstMsg.thinking = asstMsg.thinking.slice(-6000);
+        }
         else if (type === 'tool/call' || (kind === 'tool' && type.indexOf('tool') > -1)) {
           asstMsg.tools = asstMsg.tools || [];
-          asstMsg.tools.push({ name: ev.text || '工具', done: true });
+          // 同名工具去重（chunk 流会重复推送 tool-call-delta）
+          if (!asstMsg.tools.some(function (t) { return t.name === ev.text; })) {
+            asstMsg.tools.push({ name: ev.text || '工具', done: true });
+          }
         }
       });
       renderTimeline();
@@ -1482,6 +1691,8 @@ svg { flex: none; }
     });
     $('connBtn').addEventListener('click', function () { closeDrawer(); showPane('paneConnect'); });
     $('wsBtn').addEventListener('click', function () { closeDrawer(); showPane('paneWorkspaces'); loadWorkspaces(); });
+    // 顶栏工作区名可点击切换工作区（对话界面优先，工作区为次要入口）
+    $('wsLabel').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
     $('wsSwitchBtn').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
     $('filesBtn').addEventListener('click', function () { closeDrawer(); openFileBrowser(null); });
     $('termBtn').addEventListener('click', function () { closeDrawer(); openTerminal(); });
@@ -1513,6 +1724,7 @@ svg { flex: none; }
       $('chatTitle').textContent = '新对话';
       $('chatSub').textContent = state.currentWs.path || '';
       $('timeline').textContent = '';
+      $('modelBtn').classList.add('hidden'); // 新对话尚无会话，模型按钮先隐藏
       renderDrawer();
       showPane('paneChat');
       $('input').focus();
@@ -1521,6 +1733,23 @@ svg { flex: none; }
     $('menuBtn').addEventListener('click', openDrawer);
     $('sendBtn').addEventListener('click', sendMessage);
     $('stopBtn').addEventListener('click', stopTask);
+    // 模型选择
+    $('modelBtn').addEventListener('click', openModelSheet);
+    $('modelClose').addEventListener('click', function () { $('modelMask').classList.add('hidden'); });
+    $('modelMask').addEventListener('click', function (e) { if (e.target === $('modelMask')) $('modelMask').classList.add('hidden'); });
+    // 图片附件
+    $('addBtn').addEventListener('click', function () { $('fileInput').click(); });
+    $('fileInput').addEventListener('change', async function () {
+      var files = Array.prototype.slice.call(this.files || []).slice(0, 4 - attach.length);
+      this.value = '';
+      if (!files.length) { toast('最多 4 张图片', true); return; }
+      try {
+        for (var i = 0; i < files.length; i++) {
+          attach.push(await compressImage(files[i]));
+        }
+        renderAttachRow();
+      } catch (e) { toast(e.message, true); }
+    });
     $('sessSearch').addEventListener('input', function () {
       state.sessQuery = this.value.trim().toLowerCase();
       renderDrawer();

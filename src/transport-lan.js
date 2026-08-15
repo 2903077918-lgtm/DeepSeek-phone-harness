@@ -303,8 +303,9 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
         if (!task) { sendJson(res, 400, { ok: false, error: 'task 不能为空' }); return; }
         if (typeof executor.continueSession !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const images = Array.isArray(body.images) ? body.images.slice(0, 4) : undefined; // 最多 4 张
         // 与 /api/exec 共用队列：同一时间只跑一个任务（DSH 会话单写）
-        await queue.enqueue(async () => executor.continueSession({ sessionId, task }))
+        await queue.enqueue(async () => executor.continueSession({ sessionId, task, images }))
           .then((out) => {
             if (!out.ok) {
               const code = out.code === 'session-not-found' ? 404 : (out.code === 'bad-request' ? 400 : 502);
@@ -443,6 +444,34 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
           return;
         }
         sendJson(res, 200, { ok: true, title: out.title });
+        return;
+      }
+      // ---- 模型选择（转发 DSH session.models / session.selectModel，对标 DSH Web GUI）----
+      if (req.method === 'GET' && url.pathname === '/api/dsh-models') {
+        if (!auth(req, res)) return;
+        if (typeof executor.getSessionModels !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const sessionId = (url.searchParams.get('sessionId') || '').trim();
+        if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
+        try {
+          const out = await executor.getSessionModels(sessionId);
+          if (!out.ok) { sendJson(res, 502, { ok: false, error: out.error }); return; }
+          sendJson(res, 200, { ok: true, current: out.current, routable: out.routable, groups: out.groups, failures: out.failures });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e) });
+        }
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/dsh-models') {
+        if (!auth(req, res)) return;
+        if (typeof executor.selectSessionModel !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const body = await readBody(req);
+        const out = await executor.selectSessionModel({ sessionId: body.sessionId, provider: body.provider, model: body.model, reasoningEffort: body.reasoningEffort });
+        if (!out.ok) {
+          const code = out.code === 'bad-request' ? 400 : 502;
+          sendJson(res, code, { ok: false, error: out.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true, selected: out.selected });
         return;
       }
       res.writeHead(404, { 'content-type': 'application/json' });

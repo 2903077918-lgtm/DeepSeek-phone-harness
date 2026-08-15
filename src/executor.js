@@ -62,7 +62,8 @@ function runHeadless(task, onDelta) {
 // sessionId 由调用方（注册表）给出；这里只负责 prompt + 轮询"本轮"增量。
 // 提交前先记录历史进度，输出与结束判定都只针对提交之后新增的事件，
 // 因此复用旧会话时不会把历史对话混入本轮结果。
-async function runWebApi(task, onDelta, sessionId) {
+// images: [{mediaType, data(base64), name?}] 随任务作为 image content part 提交
+async function runWebApi(task, onDelta, sessionId, images) {
   const started = Date.now();
   try {
     // 1. 记录提交前的历史进度（重试 3 次；仍失败视为后端不可用，交由调用方回退 headless）
@@ -81,11 +82,22 @@ async function runWebApi(task, onDelta, sessionId) {
       }
     }
 
-    // 2. 提交任务（复用会话 → DSH 保留上下文）
+    // 2. 提交任务（复用会话 → DSH 保留上下文；可选图片附件）
+    const content = [{ type: 'text', text: task }];
+    for (const img of images || []) {
+      if (img && typeof img.data === 'string' && img.data) {
+        content.push({
+          type: 'image',
+          mediaType: String(img.mediaType || 'image/jpeg'),
+          data: img.data,
+          ...(img.name ? { name: String(img.name) } : {}),
+        });
+      }
+    }
     await fetchRpc('session.prompt', {
       sessionId,
       mode: 'queue',
-      content: [{ type: 'text', text: task }],
+      content,
     });
 
     // 3. 轮询历史直到本轮 turn/end 或超时
@@ -321,7 +333,8 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
     },
     // POST /api/dsh-continue：对 DSH 已有会话继续发消息（不新建、不改注册表）。
     // 复用 runWebApi 的"记录提交前进度 + 只统计本轮增量"逻辑；存在性用一次轻量 session.list 检查。
-    async continueSession({ sessionId, task, onDelta } = {}) {
+    // images: [{mediaType, data, name?}] 随任务提交（图片附件）
+    async continueSession({ sessionId, task, images, onDelta } = {}) {
       const sid = String(sessionId || '').trim();
       if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
       let known = false;
@@ -332,7 +345,7 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         return { ok: false, code: 'backend-unavailable', error: 'Web API 后端不可用: ' + String(e) };
       }
       if (!known) return { ok: false, code: 'session-not-found', error: '会话不存在: ' + sid };
-      const result = await runWebApi(task, onDelta, sid);
+      const result = await runWebApi(task, onDelta, sid, images);
       return { ok: true, sessionId: sid, result };
     },
     // GET /api/dsh-history?sessionId=：转发 session.history 归一化为对话消息
@@ -371,6 +384,31 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         return { ok: true, title: (value && value.title) || t, seq: value && value.seq };
       } catch (e) {
         return { ok: false, code: 'backend-unavailable', error: 'session.rename 失败: ' + String(e) };
+      }
+    },
+    // GET /api/dsh-models?sessionId=：转发 session.models（当前模型 + 可选模型分组）
+    async getSessionModels(sessionId) {
+      const sid = String(sessionId || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      try {
+        const value = await fetchRpc('session.models', { sessionId: sid });
+        return { ok: true, current: value && value.current, routable: !!(value && value.routable), groups: (value && value.groups) || [], failures: (value && value.failures) || [] };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'session.models 失败: ' + String(e) };
+      }
+    },
+    // POST /api/dsh-models {sessionId, provider, model, reasoningEffort?}：切换会话模型
+    async selectSessionModel({ sessionId, provider, model, reasoningEffort } = {}) {
+      const sid = String(sessionId || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      if (!provider || !model) return { ok: false, code: 'bad-request', error: 'provider/model 必填' };
+      const payload = { sessionId: sid, provider: String(provider), model: String(model) };
+      if (reasoningEffort) payload.reasoningEffort = String(reasoningEffort);
+      try {
+        const value = await fetchRpc('session.selectModel', payload);
+        return { ok: true, selected: value && value.selected };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'session.selectModel 失败: ' + String(e) };
       }
     },
     // GET /api/agents?sessionId=：转发 subagent.list，归一化子代理列表
