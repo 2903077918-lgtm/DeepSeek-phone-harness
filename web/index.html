@@ -662,6 +662,14 @@
   .overlay.show .overlay-card { transform: none; }
   .ov-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
   .ov-hint { font-size: 12.5px; color: var(--faint); line-height: 1.5; margin: 0 0 14px; }
+  .hidden { display: none !important; }
+  .mode-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .mode-tab {
+    flex: 1; min-height: 40px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--card-2); color: var(--muted); font-size: 13.5px; font-weight: 600; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .mode-tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
   .token-row { display: flex; gap: 8px; }
   .token-row .input { flex: 1; min-width: 0; }
   .input {
@@ -889,21 +897,50 @@
   </div>
 </section>
 
-<!-- ============ 令牌弹窗 ============ -->
-<div class="overlay" id="tokenOverlay" role="dialog" aria-modal="true" aria-label="访问令牌">
+<!-- ============ 连接弹窗（局域网 Token / 云端账号） ============ -->
+<div class="overlay" id="tokenOverlay" role="dialog" aria-modal="true" aria-label="连接设置">
   <div class="overlay-card">
-    <div class="ov-title">访问令牌</div>
-    <p class="ov-hint" id="tokenHint">输入电脑端 Agent 启动日志中打印的访问令牌</p>
-    <div class="token-row">
-      <input id="tokenInput" class="input mono" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" autocorrect="off" placeholder="粘贴 Token" enterkeyhint="go">
-      <button type="button" class="icon-btn" id="tokenToggle" aria-label="显示或隐藏令牌" aria-pressed="false">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-      </button>
+    <div class="ov-title">连接设置</div>
+    <p class="ov-hint" id="tokenHint">选择连接方式</p>
+
+    <!-- 方式切换 -->
+    <div class="mode-tabs" role="tablist" style="display:flex;gap:8px;margin-bottom:12px">
+      <button type="button" class="mode-tab" id="modeLanTab" data-mode="lan">🏠 局域网</button>
+      <button type="button" class="mode-tab active" id="modeCloudTab" data-mode="cloud">☁️ 云端</button>
     </div>
-    <div class="ov-actions">
-      <button type="button" class="btn ghost" id="tokenClear">清除</button>
-      <button type="button" class="btn primary" id="tokenSave">保存并连接</button>
+
+    <!-- 局域网（Token） -->
+    <div id="lanPane">
+      <div class="token-row">
+        <input id="tokenInput" class="input mono" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" autocorrect="off" placeholder="粘贴局域网 Token" enterkeyhint="go">
+        <button type="button" class="icon-btn" id="tokenToggle" aria-label="显示或隐藏令牌" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+      <div class="ov-actions">
+        <button type="button" class="btn ghost" id="tokenClear">清除</button>
+        <button type="button" class="btn primary" id="tokenSave">保存并连接</button>
+      </div>
     </div>
+
+    <!-- 云端（账号） -->
+    <div id="cloudPane" class="hidden">
+      <input id="cloudBaseInput" class="input" type="text" autocomplete="off" spellcheck="false" placeholder="云端地址 https://relay.axyntara.cn">
+      <div class="token-row" style="margin-top:8px">
+        <input id="cloudUserInput" class="input" type="text" autocomplete="off" spellcheck="false" placeholder="用户名（无需邮箱）">
+      </div>
+      <div class="token-row" style="margin-top:8px">
+        <input id="cloudPassInput" class="input" type="password" autocomplete="off" placeholder="密码">
+      </div>
+      <div class="ov-actions">
+        <button type="button" class="btn primary" id="cloudLoginBtn">登录</button>
+        <button type="button" class="btn ghost" id="cloudRegBtn">注册</button>
+      </div>
+      <div class="ov-actions" style="margin-top:6px">
+        <button type="button" class="btn ghost full" id="cloudLogoutBtn">退出登录</button>
+      </div>
+    </div>
+
     <button type="button" class="btn ghost full" id="tokenCancel">取消</button>
   </div>
 </div>
@@ -921,13 +958,27 @@
   var LS_SESSIONS = 'ph_sessions';
   var LS_PREFIX = 'ph_msgs_';
   var LS_DSH_PREFIX = 'ph_dsh_';
+  var LS_MODE = 'ph_mode';          // 'lan' | 'cloud'
+  var LS_CLOUD_BASE = 'ph_cloud_base';   // 云端地址
+  var LS_CLOUD_UID = 'ph_cloud_uid';     // 云端 userId
+  var LS_CLOUD_EMAIL = 'ph_cloud_email'; // 云端用户名
   var STATUS_INTERVAL = 8000;   // /api/status 心跳
   var HISTORY_LIMIT = 30;
   var SYNC_STALE_MS = 30000;    // 工作区/会话同步缓存时长
   var EVENT_INTERVAL = 1000;    // 流式事件轮询间隔
+  var CLOUD_DEFAULT_BASE = 'https://relay.axyntara.cn';
+  var CLOUD_PROMPT_AAD = 'ph-task';
 
   var state = {
     token: localStorage.getItem(LS_TOKEN) || '',
+    mode: localStorage.getItem(LS_MODE) || 'cloud',   // 'lan' 局域网 | 'cloud' 云端
+    cloudBase: localStorage.getItem(LS_CLOUD_BASE) || CLOUD_DEFAULT_BASE,
+    cloudUid: localStorage.getItem(LS_CLOUD_UID) || '',
+    cloudEmail: localStorage.getItem(LS_CLOUD_EMAIL) || '',
+    cloudDevices: [],        // 云端设备列表 [{agentId,status,name,lastSeen}]
+    cloudDeviceId: null,     // 当前选中云端设备
+    cloudPhoneKey: null,     // 手机 E2EE 密钥对（P-256，本机持久化）
+    cloudSaltByTask: {},     // taskId → salt（解密结果）
     sessions: [],        // 本地会话 [{id, title, createdAt, lastUsedAt, serverSessionId?}]
     currentId: null,
     view: { kind: 'local', id: null }, // {kind:'local',id} | {kind:'dsh',sessionId,projectTitle,sessionTitle}
@@ -981,6 +1032,7 @@
     return n;
   }
   function uid() { return 's-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function hasText(s) { return typeof s === 'string' && s.trim().length > 0; }
   function escHtml(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -1026,6 +1078,7 @@
   function httpErr(msg, code) { var e = new Error(msg); e.code = code; return e; }
 
   /* ================= API ================= */
+  // 局域网 API（原有）：相对路径 + Bearer token
   async function api(path, opts) {
     opts = opts || {};
     var headers = { authorization: 'Bearer ' + state.token };
@@ -1053,6 +1106,24 @@
     var data = null;
     try { data = await r.json(); } catch (e) { /* 非 JSON 响应 */ }
     if (r.status === 401) throw httpErr('令牌无效，请检查 Token', 401);
+    if (!r.ok) throw httpErr((data && data.error) || '请求失败（HTTP ' + r.status + '）', r.status);
+    return data;
+  }
+
+  // 云端 API：https://<cloudBase>/v1/* + x-user-id
+  async function cloudApi(path, opts) {
+    opts = opts || {};
+    var u = state.cloudBase.replace(/\/+$/, '') + path;
+    var headers = { 'content-type': 'application/json' };
+    if (state.cloudUid) headers['x-user-id'] = state.cloudUid;
+    var r;
+    try {
+      r = await fetch(u, { method: opts.method || 'GET', headers: headers, body: opts.body });
+    } catch (e) {
+      throw httpErr('无法连接云端：' + (e.message || e), 'NET');
+    }
+    var data = null;
+    try { data = await r.json(); } catch (e) { /* 非 JSON */ }
     if (!r.ok) throw httpErr((data && data.error) || '请求失败（HTTP ' + r.status + '）', r.status);
     return data;
   }
@@ -1279,6 +1350,47 @@
     wsBox.textContent = '';
     localBox.textContent = '';
 
+    // 云端模式：工作区区域显示云端设备列表
+    if (state.mode === 'cloud') {
+      var syncNote = $('wsSyncNote');
+      if (!syncNote) {
+        syncNote = el('div', 'proj-note');
+        syncNote.id = 'wsSyncNote';
+        wsBox.parentNode.insertBefore(syncNote, wsBox);
+      }
+      if (!state.cloudUid) {
+        syncNote.className = 'proj-note info';
+        syncNote.textContent = '未登录云端：点击顶部连接按钮登录，即可看到你的设备。';
+        syncNote.hidden = false;
+        $('wsCount').textContent = '—';
+        $('wsEmpty').hidden = true;
+      } else {
+        syncNote.className = 'proj-note';
+        syncNote.textContent = state.cloudDevices.length ? '选择设备进入对话（4G/任何网络可用）' : '暂无绑定设备：先在电脑端启动 Agent（--mode=cloud），用配对码绑定。';
+        syncNote.hidden = false;
+        $('wsCount').textContent = state.cloudDevices.length ? state.cloudDevices.length + ' 台' : '0';
+        $('wsEmpty').hidden = true;
+        state.cloudDevices.forEach(function (d) {
+          var item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'ws-item';
+          var on = d.status === 'online';
+          item.innerHTML =
+            '<span class="ws-icon">' + ICON_FOLDER + '</span>' +
+            '<span class="ws-main"><span class="ws-title">' + escHtml(d.name || d.agentId) + '</span>' +
+            '<span class="ws-sub">' + escHtml(d.agentId) + ' · ' + (on ? '在线' : '离线') + '</span></span>' +
+            '<span class="badge ' + (on ? 'ok' : '') + '">' + (on ? '在线' : '离线') + '</span>';
+          item.addEventListener('click', function () { openCloudDevice(d); });
+          wsBox.appendChild(item);
+        });
+      }
+      // 云端模式隐藏未分组桶
+      var ungroupedSec = $('ungroupedSec');
+      if (ungroupedSec) ungroupedSec.hidden = true;
+      renderLocalSessions(localBox, q);
+      return;
+    }
+
     // 同步状态提示
     var syncNote = $('wsSyncNote');
     if (!syncNote) {
@@ -1351,6 +1463,10 @@
       }
     }
 
+    renderLocalSessions(localBox, q);
+  }
+
+  function renderLocalSessions(localBox, q) {
     // 我的对话（本地会话）
     var locals = state.sessions.filter(function (s) {
       if (!q) return true;
@@ -1376,6 +1492,16 @@
       item.appendChild(del);
       localBox.appendChild(item);
     });
+  }
+
+  // 云端：进入设备对话
+  function openCloudDevice(d) {
+    state.cloudDeviceId = d.agentId;
+    state.view = { kind: 'local', id: state.currentId };
+    // 会话页显示设备信息（复用 crumb 显示设备名）
+    toast('已连接设备 ' + (d.name || d.agentId));
+    navPopTo(0);
+    renderMessages('bottom');
   }
 
   function confirmDelete(btn, id) {
@@ -2283,6 +2409,20 @@
     var text = input.value.trim();
     if (!text) { toast('请输入任务内容', 'err'); input.focus(); return; }
     if (state.running) { toast('上一条任务仍在执行中'); return; }
+
+    // 云端模式：走云端加密任务
+    if (state.mode === 'cloud') {
+      if (!state.cloudUid) { openTokenOverlay('请先登录云端账号'); return; }
+      if (!state.cloudDeviceId) {
+        // 自动选第一个在线设备；没有则提示去选
+        if (!state.cloudDevices.length) { toast('没有可用设备，请先在电脑端启动 Agent 并绑定', 'err'); return; }
+        state.cloudDeviceId = state.cloudDevices[0].agentId;
+        toast('已选择设备 ' + state.cloudDeviceId);
+      }
+      await sendCloudTask(text);
+      return;
+    }
+
     if (!state.token) { openTokenOverlay('发送前需要先设置访问令牌'); return; }
 
     if (state.view && state.view.kind === 'dsh') {
@@ -2369,6 +2509,112 @@
     }
   }
 
+  // ---- 云端任务（E2EE 加密 → 下发 → 轮询结果 → 解密显示）----
+  // 密钥约定与 Agent cloud-service 一致：prompt AAD='ph-task'，结果 AAD=taskId；salt 随任务下发。
+  var cloudE2eeMod = null;   // 懒加载 e2ee-web.js（index.html 非 module 脚本，动态 import）
+  function getE2ee() {
+    if (cloudE2eeMod) return Promise.resolve(cloudE2eeMod);
+    return import('./e2ee-web.js').then(function (m) { cloudE2eeMod = m; return m; });
+  }
+  function cloudPhoneKey() {
+    if (state.cloudPhoneKey) return Promise.resolve(state.cloudPhoneKey);
+    var saved = localStorage.getItem('ph_cloud_pkey');
+    if (saved) { try { state.cloudPhoneKey = JSON.parse(saved); return Promise.resolve(state.cloudPhoneKey); } catch (e) {} }
+    return getE2ee().then(function (m) {
+      return m.generateKeyPair().then(function (pair) {
+        state.cloudPhoneKey = pair;
+        localStorage.setItem('ph_cloud_pkey', JSON.stringify(pair));
+        return pair;
+      });
+    });
+  }
+  async function cloudAgentPub(agentId) {
+    var d = await cloudApi('/v1/devices/' + encodeURIComponent(agentId));
+    if (!d || !d.device || !d.device.publicKey) return null;
+    try { return JSON.parse(d.device.publicKey); } catch (e) { return null; }
+  }
+  async function sendCloudTask(text) {
+    var agentId = state.cloudDeviceId;
+    var userMsg = { id: uid(), role: 'user', text: text, at: new Date().toISOString() };
+    var msgs = loadMsgs(state.currentId);
+    msgs.push(userMsg);
+    var asstMsg = { id: uid(), role: 'assistant', text: '', stderr: '', ok: null, exitCode: null, elapsedMs: null, backend: 'cloud', streaming: true, at: new Date().toISOString() };
+    msgs.push(asstMsg);
+    saveMsgs(state.currentId, msgs);
+    $('input').value = ''; autoGrow($('input'));
+    state.running = true; state.runSid = state.currentId; startRunClock(); updateInputLock();
+    renderMessages('smooth');
+
+    try {
+      var m = await getE2ee();
+      var salt = m.generateKeySalt();
+      var phone = await cloudPhoneKey();
+      var agentPub = await cloudAgentPub(agentId);
+      if (!agentPub) throw new Error('设备未就绪（缺 E2EE 公钥），请重新绑定');
+      var key = await m.deriveSessionKey(phone.privateKey, agentPub, salt);
+      var box = await m.encrypt(key, text, CLOUD_PROMPT_AAD);
+      var d = await cloudApi('/v1/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          deviceId: agentId, userId: state.cloudUid, requireConfirm: false,
+          promptCipher: box, salt: salt, senderKey: phone.publicKey
+        })
+      });
+      var taskId = d.taskId;
+      if (!taskId) throw new Error('下发失败：无 taskId');
+      state.cloudSaltByTask[taskId] = salt;
+      try { localStorage.setItem('ph_cloud_salt', JSON.stringify(state.cloudSaltByTask)); } catch (e) {}
+      asstMsg.text = '任务已加密下发，等待电脑执行…';
+      saveMsgs(state.currentId, msgs); renderMessages('ifNear');
+
+      // 轮询结果（最长 10 分钟）
+      var deadline = Date.now() + 10 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await sleep(3000);
+        try {
+          var t = (await cloudApi('/v1/tasks/' + encodeURIComponent(taskId))).task;
+          if (!t) continue;
+          if (['succeeded', 'failed', 'timeout', 'cancelled'].indexOf(t.status) >= 0) {
+            asstMsg.text = t.status === 'succeeded' ? '任务完成 ✅' : ('任务结束：' + t.status);
+            asstMsg.ok = t.status === 'succeeded';
+            asstMsg.elapsedMs = t.elapsed_ms;
+            asstMsg.streaming = false;
+            saveMsgs(state.currentId, msgs);
+            renderMessages('ifNear');
+            if (t.result_cipher && t.status === 'succeeded') {
+              var plain = await cloudDecryptResult(taskId, t.result_cipher, salt, agentId);
+              if (plain) {
+                var resMsg = { id: uid(), role: 'assistant', text: plain, ok: true, exitCode: t.exit_code, elapsedMs: t.elapsed_ms, backend: 'cloud', at: new Date().toISOString() };
+                var ms2 = loadMsgs(state.currentId); ms2.push(resMsg); saveMsgs(state.currentId, ms2);
+                renderMessages('ifNear');
+              }
+            }
+            state.running = false; state.runSid = null; stopRunClock(); updateInputLock();
+            return;
+          }
+        } catch (e) { /* 网络抖动继续轮询 */ }
+      }
+      asstMsg.text = '任务轮询超时，请稍后在云端查看'; asstMsg.streaming = false;
+      saveMsgs(state.currentId, msgs); renderMessages('ifNear');
+    } catch (e) {
+      asstMsg.text = ''; asstMsg.stderr = e.message || '云端任务失败'; asstMsg.ok = false; asstMsg.streaming = false;
+      saveMsgs(state.currentId, msgs); renderMessages('bottom');
+    } finally {
+      state.running = false; state.runSid = null; stopRunClock(); updateInputLock();
+    }
+  }
+  async function cloudDecryptResult(taskId, resultCipher, salt, agentId) {
+    try {
+      var m = await getE2ee();
+      var phone = await cloudPhoneKey();
+      var agentPub = await cloudAgentPub(agentId);
+      if (!agentPub || !resultCipher || !salt) return null;
+      var key = await m.deriveSessionKey(phone.privateKey, agentPub, salt);
+      var r = await m.decrypt(key, { ciphertext: resultCipher.ciphertext, iv: resultCipher.iv || resultCipher.nonce, tag: resultCipher.tag }, taskId);
+      return r ? new TextDecoder().decode(r) : null;
+    } catch (e) { return null; }
+  }
+
   // DSH 历史会话「继续对话」：/api/dsh-continue + /api/events 流式
   async function sendDshContinue(text) {
     var sid = state.view.sessionId;
@@ -2430,6 +2676,18 @@
     $('projConnSub').textContent = sub || '';
   }
   async function refreshStatus(showDetail) {
+    if (state.mode === 'cloud') {
+      if (!state.cloudUid) { setConn('na', '云端', '点击登录'); return; }
+      try {
+        var st = await cloudApi('/v1/status', { timeoutMs: 6000 });
+        setConn('on', '云端 · ' + state.cloudEmail, st.service || '');
+        refreshCloud();
+      } catch (e) {
+        setConn('off', '云端不可达', '点击重试');
+        if (showDetail) openTokenOverlay();
+      }
+      return;
+    }
     if (!state.token) { setConn('na', '未设置 Token', '点击管理令牌'); return; }
     try {
       var resp = await api('/api/status', { timeoutMs: 6000 });
@@ -2464,6 +2722,7 @@
   function bootConnectivity() {
     ensureHeartbeat();
     ensureApprovalPoll();
+    if (state.mode === 'cloud') { refreshCloud(); return; }
     refreshStatus(false);
     probeSessions();
     refreshGlobalHistory(true);
@@ -2545,6 +2804,13 @@
   /* ================= 面包屑 ================= */
   function updateCrumb() {
     var c = $('crumbCur');
+    if (state.mode === 'cloud' && state.cloudDeviceId) {
+      c.textContent = '☁️ ' + state.cloudDeviceId + ' › ' + (function () {
+        var s = state.sessions.find(function (x) { return x.id === state.currentId; });
+        return s ? (s.title || '新会话') : '新会话';
+      })();
+      return;
+    }
     if (state.view && state.view.kind === 'dsh') {
       c.textContent = (state.view.projectTitle || '项目') + ' › ' + (state.view.sessionTitle || '会话');
     } else {
@@ -2553,12 +2819,26 @@
     }
   }
 
-  /* ================= 令牌 ================= */
+  /* ================= 令牌 / 云端连接 ================= */
+  function applyModeUI() {
+    var lan = state.mode === 'lan';
+    $('modeLanTab').classList.toggle('active', lan);
+    $('modeCloudTab').classList.toggle('active', !lan);
+    $('lanPane').classList.toggle('hidden', !lan);
+    $('cloudPane').classList.toggle('hidden', lan);
+    $('tokenHint').textContent = lan ? '输入电脑端 Agent 启动日志中打印的访问令牌' : '登录云端账号（可注册）';
+    $('cloudBaseInput').value = state.cloudBase;
+    $('cloudUserInput').value = state.cloudEmail;
+  }
   function openTokenOverlay(hint) {
-    $('tokenHint').textContent = hint || '输入电脑端 Agent 启动日志中打印的访问令牌';
+    $('tokenHint').textContent = hint || '选择连接方式';
     $('tokenInput').value = state.token;
+    applyModeUI();
     $('tokenOverlay').classList.add('show');
-    setTimeout(function () { $('tokenInput').focus(); }, 120);
+    setTimeout(function () {
+      if (state.mode === 'cloud') $('cloudUserInput').focus();
+      else $('tokenInput').focus();
+    }, 120);
   }
   function closeTokenOverlay() { $('tokenOverlay').classList.remove('show'); }
   function toggleTokenVisible() {
@@ -2567,6 +2847,15 @@
     input.type = show ? 'text' : 'password';
     $('tokenToggle').setAttribute('aria-pressed', String(show));
     $('tokenToggle').innerHTML = show ? ICON_EYE_OFF : ICON_EYE;
+  }
+  function setMode(m) {
+    state.mode = m;
+    localStorage.setItem(LS_MODE, m);
+    applyModeUI();
+    if (m === 'lan') { setConn('na', '局域网', '点击管理'); }
+    else { setConn(state.cloudUid ? 'on' : 'na', state.cloudUid ? ('云端 · ' + state.cloudEmail) : '云端', state.cloudUid ? '' : '点击登录'); }
+    if (m === 'lan' && state.token) bootConnectivity();
+    if (m === 'cloud' && state.cloudUid) refreshCloud();
   }
   function saveTokenFromOverlay() {
     var v = $('tokenInput').value.trim();
@@ -2586,6 +2875,56 @@
     renderSettingsStatus();
     renderProjects();
     toast('已清除令牌');
+  }
+  // ---- 云端账号 ----
+  async function cloudRegister() {
+    var u = $('cloudUserInput').value.trim(), p = $('cloudPassInput').value;
+    if (!u || !p) { toast('用户名/密码必填', 'err'); return; }
+    state.cloudBase = $('cloudBaseInput').value.trim() || CLOUD_DEFAULT_BASE;
+    localStorage.setItem(LS_CLOUD_BASE, state.cloudBase);
+    try {
+      await cloudApi('/v1/auth/register', { method: 'POST', body: JSON.stringify({ email: u, password: p }) });
+      toast('注册成功，请登录');
+      $('cloudPassInput').value = '';
+    } catch (e) { toast('注册失败: ' + e.message, 'err'); }
+  }
+  async function cloudLogin() {
+    var u = $('cloudUserInput').value.trim(), p = $('cloudPassInput').value;
+    if (!u || !p) { toast('用户名/密码必填', 'err'); return; }
+    state.cloudBase = $('cloudBaseInput').value.trim() || CLOUD_DEFAULT_BASE;
+    localStorage.setItem(LS_CLOUD_BASE, state.cloudBase);
+    try {
+      var d = await cloudApi('/v1/auth/login', { method: 'POST', body: JSON.stringify({ email: u, password: p }) });
+      state.cloudUid = d.userId; state.cloudEmail = d.email;
+      localStorage.setItem(LS_CLOUD_UID, d.userId); localStorage.setItem(LS_CLOUD_EMAIL, d.email);
+      closeTokenOverlay();
+      toast('云端登录成功');
+      setConn('on', '云端 · ' + d.email, '');
+      refreshCloud();
+      renderProjects();
+    } catch (e) { toast('登录失败: ' + e.message, 'err'); }
+  }
+  function cloudLogout() {
+    state.cloudUid = ''; state.cloudEmail = '';
+    localStorage.removeItem(LS_CLOUD_UID); localStorage.removeItem(LS_CLOUD_EMAIL);
+    state.cloudDevices = []; state.cloudDeviceId = null;
+    closeTokenOverlay();
+    setConn('na', '云端', '点击登录');
+    renderProjects();
+    toast('已退出云端登录');
+  }
+  // 云端设备列表 + 状态
+  async function refreshCloud() {
+    if (!state.cloudUid) return;
+    try {
+      var st = await cloudApi('/v1/status');
+      setConn('on', '云端 · ' + state.cloudEmail, st.service || '');
+      var d = await cloudApi('/v1/devices?userId=' + encodeURIComponent(state.cloudUid));
+      state.cloudDevices = d.items || [];
+      renderProjects();
+    } catch (e) {
+      setConn('off', '云端不可达', '点击重试');
+    }
   }
 
   /* ================= Toast ================= */
@@ -2631,7 +2970,15 @@
     updateInputLock();
     applyNav();
 
-    if (state.token) {
+    if (state.mode === 'cloud') {
+      if (state.cloudUid) {
+        setConn('on', '云端 · ' + state.cloudEmail, '');
+        refreshCloud();
+      } else {
+        setConn('na', '云端', '点击登录');
+        openTokenOverlay('首次使用：注册或登录云端账号');
+      }
+    } else if (state.token) {
       bootConnectivity();
     } else {
       setConn('na', '未设置 Token', '点击管理令牌');
@@ -2652,8 +2999,14 @@
     $('apprBadge').addEventListener('click', scrollToPendingApproval);
     $('newSessBtn').addEventListener('click', function () { newSession(); navPopTo(0); });
     $('sendBtn').addEventListener('click', sendMessage);
-    $('connPill').addEventListener('click', function () { refreshStatus(true); });
-    $('projConnRow').addEventListener('click', function () { refreshStatus(true); });
+    $('connPill').addEventListener('click', function () {
+      if (state.mode === 'cloud') openTokenOverlay();
+      else refreshStatus(true);
+    });
+    $('projConnRow').addEventListener('click', function () {
+      if (state.mode === 'cloud') openTokenOverlay();
+      else refreshStatus(true);
+    });
     $('wsRefresh').addEventListener('click', function () { loadWorkspaces(true); loadDshSessions(true); toast('正在刷新 DSH 工作区…'); });
     $('ghRefresh').addEventListener('click', function () { refreshGlobalHistory(false); });
     $('stRefresh').addEventListener('click', function () { bootConnectivity(); toast('正在重新检测…'); });
@@ -2662,6 +3015,11 @@
     $('tokenClear').addEventListener('click', clearToken);
     $('tokenCancel').addEventListener('click', closeTokenOverlay);
     $('tokenToggle').addEventListener('click', toggleTokenVisible);
+    $('modeLanTab').addEventListener('click', function () { setMode('lan'); });
+    $('modeCloudTab').addEventListener('click', function () { setMode('cloud'); });
+    $('cloudLoginBtn').addEventListener('click', cloudLogin);
+    $('cloudRegBtn').addEventListener('click', cloudRegister);
+    $('cloudLogoutBtn').addEventListener('click', cloudLogout);
 
     $('projSearch').addEventListener('input', function () {
       state.projQuery = this.value.trim().toLowerCase();
