@@ -42,9 +42,10 @@ export function createCloudPoller(opts = {}) {
     return deriveSessionKey(agentPrivate, senderKey, salt);
   }
   async function decryptPrompt(taskId, payload) {
-    const key = await taskKey(taskId, payload.senderKey, payload.salt);
-    if (!key || !payload.promptCipher) return null;
-    const p = await decrypt(key, payload.promptCipher, PROMPT_AAD);
+    // 任务数据字段为下划线风格（prompt_cipher/sender_key/salt），与后端 tasks 表一致
+    const key = await taskKey(taskId, payload.sender_key, payload.salt);
+    if (!key || !payload.prompt_cipher) { log.warn('[poll] 任务 ' + taskId + ' 无密钥/无密文，跳过'); return null; }
+    const p = await decrypt(key, payload.prompt_cipher, PROMPT_AAD);
     return p ? new TextDecoder().decode(p) : null;
   }
   async function encryptResult(taskId, result) {
@@ -84,7 +85,9 @@ export function createCloudPoller(opts = {}) {
         try { await processTask(task); } catch (e) { log.error('[poll] 任务处理失败: ' + e.message); }
         finally { running = false; }
       }
-    } catch (e) { /* 网络/后端异常，下次轮询重试 */ }
+    } catch (e) {
+      log.error('[poll] 轮询异常: ' + (e && e.message ? e.message : String(e)));
+    }
     finally { polling = false; }
   }
 
