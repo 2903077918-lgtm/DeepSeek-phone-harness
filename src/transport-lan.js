@@ -287,7 +287,8 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         if (typeof executor.listDshSessions !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
         try {
           const withCount = (url.searchParams.get('withCount') || '').toLowerCase() === 'true';
-          const items = await executor.listDshSessions(withCount);
+          const workspaceId = (url.searchParams.get('workspaceId') || '').trim() || undefined;
+          const items = await executor.listDshSessions(workspaceId, withCount);
           sendJson(res, 200, { ok: true, items });
         } catch (e) {
           sendJson(res, 502, { ok: false, error: 'DSH 同步失败（Web API 后端不可用?）: ' + String(e) });

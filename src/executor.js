@@ -253,7 +253,7 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
     // GET /api/dsh-workspaces：workspace.list + 按 cwd 前缀重新分组
     // （workspace.sessionIds 可能不准——实测多数为空——故以 session.list 的 cwd 前缀为准，
     //  与声明的 sessionIds 取并集计数；长路径优先匹配，避免嵌套工作区归属错误）
-    // 按 basename 去重合并同名工作区（如多个 voltex-ai-platform → 1 个，sessionCount 累加）
+    // 每个真实工作区返回独立项（保留真实 workspaceId + path），避免 basename 合并导致按工作区过滤错乱。
     async listDshWorkspaces() {
       const [wsValue, slValue] = await Promise.all([
         fetchRpc('workspace.list', {}),
@@ -273,38 +273,38 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         });
         if (ws) { const set = matched.get(ws.workspaceId); if (set) set.add(s.sessionId); }
       }
-      // 按 basename 去重合并
-      const byBasename = new Map(); // basename -> merged workspace
-      for (const w of workspaces) {
-        const bn = baseName(w.path);
-        const existing = byBasename.get(bn);
-        if (existing) {
-          existing.sessionCount += (matched.get(w.workspaceId) || new Set()).size;
-          if (!existing.title && w.title) existing.title = w.title;
-        } else {
-          byBasename.set(bn, {
-            workspaceId: w.workspaceId,
-            path: w.path,
-            title: w.title || null,
-            sessionCount: (matched.get(w.workspaceId) || new Set()).size,
-          });
-        }
-      }
-      return [...byBasename.values()];
+      return workspaces
+        .map((w) => ({
+          workspaceId: w.workspaceId,
+          path: w.path,
+          title: w.title || null,
+          sessionCount: (matched.get(w.workspaceId) || new Set()).size,
+        }))
+        .sort((a, b) => b.sessionCount - a.sessionCount || String(a.path).localeCompare(String(b.path)));
     },
     // GET /api/dsh-sessions：session.list 归一化（title 取自 projections，零额外 RPC）
+    // 可选 workspaceId：只返回该工作区下的会话（按 cwd 前缀匹配 + workspace.sessionIds 兜底）；
+    //   workspaceId 空缺时返回全部（供 openSession/全量浏览）。
     // 可选 withCount=true：对每个会话取消息数（session.history 事件数）——只给 UI 打开的项目用，避免全量开销
     // 标注 ungrouped=true：cwd 不匹配任何工作区路径的会话（供 UI 显示"未分组"桶）
-    async listDshSessions(withCount) {
+    async listDshSessions(workspaceId, withCount) {
       const [slValue, wsValue] = await Promise.all([
         fetchRpc('session.list', {}),
         fetchRpc('workspace.list', {}),
       ]);
-      const wsPaths = ((wsValue && wsValue.items) || [])
-        .map((w) => normPath(w.path))
-        .filter(Boolean)
-        .sort((a, b) => b.length - a.length); // 最长前缀优先
-      const items = ((slValue && slValue.items) || []).map((s) => {
+      const workspaces = (wsValue && wsValue.items) || [];
+      const wsPaths = workspaces.map((w) => normPath(w.path)).filter(Boolean).sort((a, b) => b.length - a.length); // 最长前缀优先
+      let targetWs = null;
+      if (workspaceId) targetWs = workspaces.find((w) => w.workspaceId === workspaceId) || null;
+      const targetWsPaths = targetWs ? [normPath(targetWs.path)].filter(Boolean) : wsPaths;
+      const targetSessionIds = targetWs ? new Set((targetWs.sessionIds || []).filter(Boolean)) : null;
+      const inTarget = (s) => {
+        if (!workspaceId) return true; // 全量
+        const cwd = normPath(s.cwd);
+        if (cwd && targetWsPaths.some((p) => p && (cwd === p || cwd.startsWith(p + '/')))) return true;
+        return !!targetSessionIds && targetSessionIds.has(s.sessionId);
+      };
+      const items = ((slValue && slValue.items) || []).filter((s) => inTarget(s)).map((s) => {
         const cwd = normPath(s.cwd);
         const inWorkspace = cwd && wsPaths.some((p) => cwd === p || cwd.startsWith(p + '/'));
         const proj = (s.projections && s.projections.values) || {};
@@ -425,6 +425,8 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
     },
     // ---- 目标（goal）：状态在 projections.values.goal；mutation 转发 goal.* ----
     // GET /api/dsh-goals?sessionId=：读 projections 里的 goal 当前状态
+    // projections.values.goal 形如 {goal:{id,revision,objective,phase,maxGoalRounds}, roundsStarted,...}
+    // → 拍平返回 {ok, goal: {id,revision,objective,phase,maxGoalRounds,...}, meta}
     async getSessionGoal(sessionId) {
       const sid = String(sessionId || '').trim();
       if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
@@ -432,18 +434,25 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         const value = await fetchRpc('session.list', {});
         const s = ((value && value.items) || []).find((x) => x.sessionId === sid);
         const proj = (s && s.projections && s.projections.values && s.projections.values.goal) || null;
-        return { ok: true, goal: proj };
+        const goal = (proj && proj.goal) || null;
+        return { ok: true, goal, meta: proj };
       } catch (e) {
         return { ok: false, code: 'backend-unavailable', error: '读取 goal 失败: ' + String(e) };
       }
     },
     // POST /api/dsh-goals {action, sessionId, objective?, maxGoalRounds?, ref?}：goal.create|edit|pause|resume|complete|clear
+    // 除 create 外都需要 ref；前端未传时后端从 goal 投影自动取（避免 clear 等传空 ref 校验失败）
     async mutateGoal({ action, sessionId, objective, maxGoalRounds, ref } = {}) {
       const sid = String(sessionId || '').trim();
       const act = String(action || '');
       if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
       const allowed = ['create', 'edit', 'pause', 'resume', 'complete', 'clear'];
       if (!allowed.includes(act)) return { ok: false, code: 'bad-request', error: 'goal 动作只允许 ' + allowed.join('/') };
+      // 投影里取当前 goal（供缺省 ref）
+      const goalOf = async () => {
+        const out = await this.getSessionGoal(sid);
+        return out.goal || null;
+      };
       try {
         if (act === 'create') {
           const objectiveStr = String(objective || '').trim();
@@ -452,22 +461,27 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
           if (Number.isInteger(maxGoalRounds) && maxGoalRounds > 0) p.maxGoalRounds = maxGoalRounds;
           const v = await fetchRpc('goal.create', p);
           return { ok: true, ref: v && v.ref };
-        } else if (act === 'clear') {
-          await fetchRpc('goal.clear', { sessionId: sid, ref: ref || {} });
-          return { ok: true, cleared: true };
-        } else {
-          // edit / pause / resume / complete 都用 ref
-          if (!ref || !ref.id) return { ok: false, code: 'bad-request', error: '缺少 ref 信息（目标不存在）' };
-          const p = { sessionId: sid, ref };
-          if (act === 'edit') {
-            const objectiveStr = String(objective || '').trim();
-            if (!objectiveStr) return { ok: false, code: 'bad-request', error: 'objective 不能为空' };
-            p.objective = objectiveStr;
-            if (Number.isInteger(maxGoalRounds) && maxGoalRounds > 0) p.maxGoalRounds = maxGoalRounds;
-          }
-          const v = await fetchRpc('goal.' + act, p);
-          return { ok: true, ref: (v && v.ref) || ref };
         }
+        // edit / pause / resume / complete / clear：需要有效 ref
+        let useRef = (ref && ref.id && typeof ref.revision === 'number') ? ref : null;
+        if (!useRef) {
+          const cur = await goalOf();
+          if (cur && cur.id && typeof cur.revision === 'number') useRef = { id: cur.id, revision: cur.revision };
+        }
+        if (!useRef) return { ok: false, code: 'bad-request', error: '找不到目标，无法' + (act === 'clear' ? '清除' : '执行') };
+        if (act === 'clear') {
+          await fetchRpc('goal.clear', { sessionId: sid, ref: useRef });
+          return { ok: true, cleared: true };
+        }
+        const p = { sessionId: sid, ref: useRef };
+        if (act === 'edit') {
+          const objectiveStr = String(objective || '').trim();
+          if (!objectiveStr) return { ok: false, code: 'bad-request', error: 'objective 不能为空' };
+          p.objective = objectiveStr;
+          if (Number.isInteger(maxGoalRounds) && maxGoalRounds > 0) p.maxGoalRounds = maxGoalRounds;
+        }
+        const v = await fetchRpc('goal.' + act, p);
+        return { ok: true, ref: (v && v.ref) || useRef };
       } catch (e) {
         return { ok: false, code: 'backend-unavailable', error: 'goal.' + act + ' 失败: ' + String(e) };
       }
