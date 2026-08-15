@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🐋 phone-harness
+# 🐋 DeepSeek Phone Harness
 
 ### 把 DeepSeek Harness 装进口袋 —— 手机远程控制你的电脑 Agent
 
@@ -14,7 +14,7 @@
 
 ## 这是什么？
 
-**phone-harness** 是一个手机端远程控制系统，让你在任何网络（4G/5G / WiFi / 公网）下，用手机操作电脑上的 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) —— 发任务、看流式输出、批准工具调用、回答 Agent 提问、跑终端命令、翻文件、查任务记录，全都在手掌心里完成。
+**DeepSeek Phone Harness** 是一个手机端远程控制系统，让你在任何网络（4G/5G / WiFi / 公网）下，用手机操作电脑上的 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) —— 发任务、看流式输出、批准工具调用、回答 Agent 提问、跑终端命令、翻文件、查任务记录，全都在手掌心里完成。
 
 界面参考开源项目 [codex-relay](https://github.com/gronxb/codex-relay) 的设计语言，对话体验对标 DeepSeek Harness Web GUI：**模型选择、图片附件、思考过程折叠、工具调用卡片（带路径/状态/详情）、审批与提问卡**，一样不少。
 
