@@ -27,7 +27,13 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
     return true;
   }
   function sendJson(res, code, obj) {
-    res.writeHead(code, { 'content-type': 'application/json' });
+    res.writeHead(code, {
+      'content-type': 'application/json',
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET,POST,OPTIONS',
+      'access-control-allow-headers': 'content-type, authorization, x-user-id',
+      'access-control-max-age': '86400',
+    });
     res.end(JSON.stringify(obj));
   }
   function readBody(req) {
@@ -47,6 +53,17 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     try {
+      // CORS 预检
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, {
+          'access-control-allow-origin': '*',
+          'access-control-allow-methods': 'GET,POST,OPTIONS',
+          'access-control-allow-headers': 'content-type, authorization, x-user-id',
+          'access-control-max-age': '86400',
+        });
+        res.end();
+        return;
+      }
       if (req.method === 'GET' && url.pathname === '/') {
         // no-store：防止手机浏览器缓存旧版 UI（v2 升级后旧缓存导致"无法加载"）
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate' });
@@ -55,6 +72,17 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
           res.end(readFileSync(webFile, 'utf8'));
         } else {
           res.end('<!DOCTYPE html><html><body><h1>deepseekharness-relay</h1><p>web/index.html 缺失</p></body></html>');
+        }
+        return;
+      }
+      // 独立手机界面（codex-relay 风格）
+      if (req.method === 'GET' && (url.pathname === '/relay.html' || url.pathname === '/mobile')) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate' });
+        const relayFile = path.join(rootDir, 'web', 'relay.html');
+        if (existsSync(relayFile)) {
+          res.end(readFileSync(relayFile, 'utf8'));
+        } else {
+          res.end('<!DOCTYPE html><html><body><h1>relay.html 缺失</h1></body></html>');
         }
         return;
       }
