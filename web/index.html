@@ -1188,6 +1188,10 @@ svg { flex: none; }
         <div class="sec-title"><span>通用设置</span></div>
         <div class="settings-card">
           <div class="set-row">
+            <div class="set-l"><div class="set-t">默认 Agent 预设</div><div class="set-s">之后新建的会话使用该模式</div></div>
+            <button class="set-btn sm" id="defPresetBtn" type="button" style="flex:none;padding:7px 12px;border:1px solid var(--border-strong);border-radius:9px;font-size:12.5px">标准模式</button>
+          </div>
+          <div class="set-row">
             <div class="set-l"><div class="set-t">新会话默认权限</div><div class="set-s">影响之后新建的会话（当前会话见权限面板）</div></div>
           </div>
           <div class="set-row">
@@ -2201,6 +2205,27 @@ svg { flex: none; }
   // ============ 模式切换（Agent 预设：标准/PTC/极简/创造） ============
   var presetState = { presets: [], current: null };
   var presetNameMap = { 'standard': '标准模式', 'minimal': '极简模式', 'code': 'PTC 模式', 'cordis': '创造模式', 'standard-high-fidelity': '稀压高保真' };
+  var defaultPresetId = null;   // DSH 设置的默认 Agent 预设（agent-presets.default）
+  var presetPickMode = null;    // 'default'=设置页选默认预设；null=顶栏切换当前会话模式
+  function presetLabel(id) {
+    var n = id && presetNameMap[id];
+    if (!n) { var p = presetState.presets.find(function (x) { return x.id === id; }); n = (p && p.name) || id || '标准模式'; }
+    return n;
+  }
+  function updateDefPresetBtn() {
+    var b = $('defPresetBtn');
+    if (b) b.textContent = presetLabel(defaultPresetId);
+  }
+  // 设置页选择默认 Agent 预设（settings agent-presets.default）
+  async function setDefaultPreset(id) {
+    var ok = await mutateSetting('agent-presets', [{ op: 'set', path: ['default'], value: id }]);
+    if (!ok) return;
+    defaultPresetId = id;
+    updateDefPresetBtn();
+    presetPickMode = null;
+    $('presetMask').classList.add('hidden');
+    toast(state.locale === 'en' ? 'Default agent preset set' : '已设置默认 Agent 预设');
+  }
   async function loadPresets() {
     if (!state.base || !state.token) return;
     try {
@@ -2245,15 +2270,20 @@ svg { flex: none; }
       list.innerHTML = '<div class="empty" style="padding:30px 10px">暂无可选模式</div>';
       return;
     }
+    // 设置页"默认 Agent 预设"模式下高亮默认值；否则高亮当前会话模式
+    var hl = presetPickMode === 'default' ? defaultPresetId : presetState.current;
     presetState.presets.forEach(function (p) {
       var name = presetNameMap[p.id] || p.name || p.id;
       var it = document.createElement('button');
       it.type = 'button';
-      it.className = 'model-item stack' + (presetState.current === p.id ? ' on' : '');
+      it.className = 'model-item stack' + (hl === p.id ? ' on' : '');
       it.innerHTML = '<span class="m-name">' + esc(name) + '</span>' +
         (p.description ? '<span class="m-desc">' + esc(String(p.description)) + '</span>' : '') +
-        (presetState.current === p.id ? '<span class="m-check">&#10003;</span>' : '');
-      it.addEventListener('click', function () { selectPreset(p.id, name); });
+        (hl === p.id ? '<span class="m-check">&#10003;</span>' : '');
+      it.addEventListener('click', function () {
+        if (presetPickMode === 'default') { setDefaultPreset(p.id); return; }
+        selectPreset(p.id, name);
+      });
       list.appendChild(it);
     });
     $('presetMask').classList.remove('hidden');
@@ -3595,6 +3625,7 @@ svg { flex: none; }
     '新会话': 'New chat', '搜索会话': 'Search sessions', '工作区': 'Workspace', '会话': 'Sessions',
     '展开其余 ': 'Show ', ' 个会话': ' sessions', '收起会话': 'Collapse', '更多功能': 'More',
     '设置': 'Settings', '文件': 'Files', '终端': 'Terminal', '任务': 'Tasks', '目标': 'Goals', '技能': 'Skills',
+    '默认 Agent 预设': 'Default agent preset', '之后新建的会话使用该模式': 'Used for newly created sessions', '已设置默认 Agent 预设': 'Default agent preset set',
     '子代理': 'Subagents', '连接设置': 'Connection', '选择工作区': 'Select workspace', '进行中': 'Running',
     '搜索': 'Search', '搜索轨迹': 'Search trajectory', '条': 'items', '暂无轨迹': 'No trajectory', '无匹配结果': 'No matches',
     '对话': 'Chat', '轨迹': 'Trajectory', '切换工作区': 'Switch workspace', '返回': 'Back', '刷新': 'Refresh', '重连': 'Reconnect',
@@ -3752,6 +3783,12 @@ svg { flex: none; }
       var uc = find('ui-conversation');
       var loc = find('locale');
       var perm = find('permission');
+      var ap = find('agent-presets');
+      // 默认 Agent 预设（DSH 设置 → Agent 预设）
+      if (ap && ap.default) {
+        defaultPresetId = ap.default;
+        updateDefPresetBtn();
+      }
       // 繁忙时 Enter：DSH 设置优先，其次本地记忆
       var be = uc.busyEnter || state.busyEnter || 'steer';
       state.busyEnter = be;
@@ -4039,9 +4076,10 @@ svg { flex: none; }
     $('modelClose').addEventListener('click', function () { $('modelMask').classList.add('hidden'); });
     $('modelMask').addEventListener('click', function (e) { if (e.target === $('modelMask')) $('modelMask').classList.add('hidden'); });
     // 模式切换
-    $('presetBtn').addEventListener('click', openPresetSheet);
-    $('presetClose').addEventListener('click', function () { $('presetMask').classList.add('hidden'); });
-    $('presetMask').addEventListener('click', function (e) { if (e.target === $('presetMask')) $('presetMask').classList.add('hidden'); });
+    $('presetBtn').addEventListener('click', function () { presetPickMode = null; openPresetSheet(); });
+    $('defPresetBtn').addEventListener('click', function () { presetPickMode = 'default'; openPresetSheet(); });
+    $('presetClose').addEventListener('click', function () { presetPickMode = null; $('presetMask').classList.add('hidden'); });
+    $('presetMask').addEventListener('click', function (e) { if (e.target === $('presetMask')) { presetPickMode = null; $('presetMask').classList.add('hidden'); } });
     // 权限面板
     $('permPill').addEventListener('click', openPermSheet);
     $('permClose').addEventListener('click', function () { $('permMask').classList.add('hidden'); });

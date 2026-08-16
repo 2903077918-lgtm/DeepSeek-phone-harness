@@ -572,7 +572,7 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
       try {
         const value = await fetchRpc('settings.describe', {});
         const namespaces = (value && value.namespaces) || [];
-        const pick = ['ui-conversation', 'locale', 'permission', 'ui-theme', 'llm-pi-ai', 'agent-default-model'];
+        const pick = ['ui-conversation', 'locale', 'permission', 'ui-theme', 'llm-pi-ai', 'agent-default-model', 'agent-presets'];
         const slim = namespaces.filter((n) => pick.includes(n.ns)).map((n) => ({ ns: n.ns, value: n.value || {}, user: n.user || null, revision: n.revision }));
         return { ok: true, writable: !!(value && value.writable), namespaces: slim };
       } catch (e) {
