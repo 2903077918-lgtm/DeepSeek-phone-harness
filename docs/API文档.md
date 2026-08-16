@@ -115,6 +115,42 @@ Agent 自己的会话注册表（webapi 会话，sessions.json 持久化）。
 
 ---
 
+## 四·五、推送通知 API（PWA Web Push）
+
+手机浏览器（需 HTTPS 安全上下文）启用后，审批 / 提问 / 任务完成会推送到手机。零依赖：VAPID(P-256) + RFC 8291 aes128gcm，免费，无需 APNs/FCM 账号。
+
+### GET /api/push/vapid
+返回 VAPID 公钥（base64url，65 字节非压缩点），浏览器 `pushManager.subscribe({ applicationServerKey })` 用。
+```json
+{ "ok": true, "publicKey": "BHUc96DWxi1ZZp_1..." }
+```
+
+### POST /api/push/register
+body：`{ subscription: { endpoint, keys: { p256dh, auth } }, deviceLabel? }`。幂等（同 endpoint 复用 id），持久化到 `push-subscriptions.json`。
+```json
+{ "ok": true, "id": "push-6d6201c3" }
+```
+
+### GET /api/push/list
+```json
+{ "ok": true, "items": [{ "id", "deviceLabel", "at" }] }
+```
+
+### POST /api/push/remove
+body：`{ id }`。删除订阅。
+
+### POST /api/push/test
+给所有订阅发一条测试推送，返回逐条结果（404/410 自动清理失效订阅）。
+```json
+{ "ok": true, "results": [{ "id", "ok", "status" }] }
+```
+
+**通知触发点**：approval-relay 收到 `approval/requested`/`question/requested` 帧、executor `continueSession` 跑完一轮（任务完成）时，经 `pushNotifier.notify` 发给全部订阅。
+
+**前端**：`web/sw.js` 处理 `push`/`notificationclick`；设置页「推送通知」按钮完成 SW 注册 + 订阅 + 上报 + 测试。
+
+---
+
 ## 五、技术要点（实现细节）
 
 1. **DSH 事件流是 WebSocket**：`ws://127.0.0.1:3080/api/events.mux`（fetch 会 426）。relay 常驻连接，收 `approval/requested`（审批）+ `session/event`（流式事件）。
@@ -127,13 +163,50 @@ Agent 自己的会话注册表（webapi 会话，sessions.json 持久化）。
 
 ## 六、测试
 
+> 测试目标矩阵：**独立单测**（不依赖 DSH/agent/网络，可直接跑）+ **集成验证**（需 agent 在 `127.0.0.1:8788`，且有前置检测，未启动会给出清晰提示并退出）。
+
+### 独立单测（不依赖运行态，直接跑）
+
 ```bash
-# 集成测试（8 项：UI/会话/上下文记忆/history过滤）
+# 阶段3 核心模块：protocol / e2ee(X25519+HKDF+AES-GCM) / guard(风险分级) / audit(hash chain) —— 22 项
+node test-core-modules.mjs
+
+# 跨端 E2EE（浏览器=Node 同一 e2ee-web.js，P-256 ECDH）一致性 —— 7 项
+node test-e2ee-web.mjs
+
+# Agent 云端传输层协议状态机（hello/心跳/断线重连/outbox 回执）—— 12 项（mock socket）
+node test-cloud-transport.mjs
+
+# Agent 云端接线器（明文任务流转 + E2EE 加解密 + 风险分级确认）—— 9 项（mock transport/executor）
+node test-cloud-service.mjs
+
+# 目标(goal) API：getSessionGoal 拍平 + mutateGoal 不传 ref 自动取投影 ref —— 16 项（mock DSH RPC）
+node --experimental-strip-types test-goal-api.mjs
+
+# 云端 REST 控制面服务端：账号/设备注册/配对/任务CRUD(E2EE senderKey/salt)/poll/confirm/kill/result/CORS —— 27 项
+node --loader ./test-utils/ts-import-loader.mjs --experimental-strip-types test-cloud-relay-service.mjs   # 在 cloud-relay/ 目录运行
+```
+
+### 集成验证（需 agent 已启动，首行自动探测 `127.0.0.1:8788`）
+
+```bash
+# E2E：手机→agent→DSH headless→结果回传 + history（模拟 phone 下发任务）
+node test-e2e.mjs
+
+# 会话连续性 + 新 UI + history 按 sessionId 过滤 —— 8 项
 node test-integration.mjs
 
-# 审批 API 测试（3 项）
+# 审批 API（可用 / 非法 outcome=400 / 未授权=401）—— 3 项
 node test-approvals.mjs
+
+# v2 后端新字段冒烟（UI/kind/dsh-sessions/cancel 链路）
+node verify-v2.mjs
+
+# goal API 对真实 DSH 的 review 验证（会创建/清除真实 goal，慢，仅主动审查用）
+node verify-goal-review.mjs
 ```
+
+启动 agent 前置：`node agent.mjs --mode=both`（或 `start-agent.ps1`）。集成脚本内置 `agentReady()` 前置检测。
 
 ---
 
