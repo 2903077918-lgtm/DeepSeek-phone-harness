@@ -326,6 +326,9 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
           contextPressure: proj.contextPressure || undefined,
           goal: proj.goal || undefined,
           stats: Object.keys(stats).length ? stats : undefined,
+          // 任务清单(todo_write) + 计划模式
+          todos: Array.isArray(proj.todos) ? proj.todos : undefined,
+          plan: proj.plan || undefined,
         };
       });
       if (withCount) {

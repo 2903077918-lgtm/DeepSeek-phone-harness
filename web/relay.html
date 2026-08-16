@@ -267,6 +267,35 @@ svg { flex: none; }
 }
 .tool-line.run { color: #C6D2FF; }
 .tool-line.done { color: var(--green); }
+/* 任务清单面板（todo_write 分步） */
+.todo-panel { flex: none; border-bottom: 1px solid var(--border); background: var(--bg-drawer); padding: 8px 14px; }
+.todo-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.todo-title { font-size: 12px; font-weight: 700; color: var(--green); }
+.todo-count { margin-left: auto; font-size: 11px; color: var(--text-2); }
+.todo-list { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+.todo-item { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; font-size: 12.5px; }
+.todo-item.running { background: rgba(62,150,255,0.08); }
+.todo-item.done { opacity: 0.6; }
+.todo-ic { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-2); }
+.todo-item.running .todo-ic { border-color: var(--blue); color: var(--blue-2); }
+.todo-item.done .todo-ic { background: var(--green); border-color: var(--green); color: #07130a; }
+.todo-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.todo-status { flex: none; font-size: 10px; color: var(--text-3); }
+.todo-item.running .todo-status { color: var(--blue-2); }
+.todo-item.done .todo-status { color: var(--green); }
+
+/* 分步任务卡片（对标 DSH step 逐项执行） */
+.step-list { display: flex; flex-direction: column; gap: 8px; }
+.step-card { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: rgba(255,255,255,0.03); }
+.step-card.run { border-color: rgba(62,150,255,0.5); box-shadow: 0 0 0 1px rgba(62,150,255,0.15); }
+.step-card .step-head { display: flex; align-items: center; gap: 8px; padding: 7px 11px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.step-card .step-no { font-size: 12px; font-weight: 700; color: var(--text); }
+.step-card .step-status { margin-left: auto; font-size: 10.5px; color: var(--text-2); display: inline-flex; align-items: center; gap: 5px; }
+.step-card.run .step-status { color: var(--blue-2); }
+.step-card.done .step-status { color: var(--green); }
+.step-card .asst-body { padding: 8px 11px 6px; font-size: 13.5px; }
+.step-card .tool-stack { margin: 4px 8px 8px; }
+
 /* 工具卡片（对标 DSH Web GUI：图标 + 状态 + 路径参数 + 可展开详情） */
 .tool-stack { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .tool-card { border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.03); overflow: hidden; }
@@ -611,6 +640,11 @@ svg { flex: none; }
         <span class="conn-banner-dot" id="connBannerDot"></span>
         <span class="conn-banner-text" id="connBannerText"></span>
         <button class="conn-banner-btn" id="connBannerBtn" type="button">重连</button>
+      </div>
+      <!-- 任务清单面板：展示模型 todo_write 规划的分步步骤 -->
+      <div class="todo-panel hidden" id="todoPanel">
+        <div class="todo-head"><span class="todo-title">&#10003; 任务清单</span><span class="todo-count" id="todoCount"></span></div>
+        <div class="todo-list" id="todoList"></div>
       </div>
       <div class="timeline" id="timeline"></div>
       <footer class="inputbar">
@@ -1183,6 +1217,7 @@ svg { flex: none; }
     if (state.running && !hasStreaming) tl.appendChild(pendingEl());
     renderApprovals();
     renderTaskStat();
+    renderTodos();
     tl.scrollTop = tl.scrollHeight;
   }
   // 最下方统计条：token 用量 / 缓存命中
@@ -1319,18 +1354,22 @@ svg { flex: none; }
         '<div class="think-body">' + esc(m.thinking) + '</div></details>';
     }
     var toolsHtml = '';
-    if (m.tools && m.tools.length) {
+    if (!useSteps && m.tools && m.tools.length) {
       toolsHtml = '<div class="tool-stack">' + m.tools.map(function (t) {
         return '<span class="tool-card-wrap">' + toolCardHtml(t, m.streaming) + '</span>';
       }).join('') + '</div>';
     }
+    var useSteps = m.steps && m.steps.length > 0;
+    var contentHtml = useSteps ? stepListHtml(m) : '';
     aw.innerHTML =
       '<div class="avatar">DSH</div>' +
       '<div class="bubble"><div class="asst-label">deepseekharness</div>' +
       thinkHtml +
-      (m.streaming ? '<div class="asst-body typing">' : '<div class="asst-body">') +
-      renderMarkdown(m.text || (m.err ? '错误：' + m.err : '')) +
-      (m.streaming ? '<span class="stream-cursor"></span>' : '') + '</div>' +
+      (useSteps
+        ? contentHtml
+        : '<div class="asst-body' + (m.streaming ? ' typing' : '') + '">' +
+          renderMarkdown(m.text || (m.err ? '错误：' + m.err : '')) +
+          (m.streaming ? '<span class="stream-cursor"></span>' : '') + '</div>') +
       toolsHtml +
       '<div class="meta">' + (m.time ? esc(fmtTime(m.time)) + ' · ' : '') + '<button class="copy-btn" data-copy="' + esc(m.text || '') + '" type="button">复制</button></div></div>';
     aw.querySelector('.copy-btn').addEventListener('click', function (e) {
@@ -1338,6 +1377,35 @@ svg { flex: none; }
       copyText(m.text || '');
     });
     return aw;
+  }
+  // 分步任务卡片列表（对标 DSH 按 step 逐项执行展示）
+  function stepListHtml(m) {
+    var out = '<div class="step-list">';
+    var last = m.steps.length - 1;
+    m.steps.forEach(function (s, i) {
+      var active = m.streaming && i === last;
+      var hasContent = (s.text && s.text.trim()) || (s.tools && s.tools.length);
+      if (!hasContent) return; // 跳过空 step
+      var st = active ? 'run' : 'done';
+      var statusTxt = active ? '执行中' : '完成';
+      out += '<div class="step-card ' + st + '">' +
+        '<div class="step-head"><span class="step-no">步骤 ' + (i + 1) + '</span>' +
+        '<span class="step-status">' + statusTxt + '</span></div>';
+      if (s.thinking && s.thinking.trim()) {
+        out += '<details class="think-block"' + (active ? ' open' : '') + '>' +
+          '<summary><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><polyline points="12 6 12 12 16 14"/></svg>' +
+          '<span class="tw">思考</span></summary><div class="think-body">' + esc(s.thinking) + '</div></details>';
+      }
+      if (s.text && s.text.trim()) out += '<div class="asst-body">' + renderMarkdown(s.text) + '</div>';
+      if (s.tools && s.tools.length) {
+        out += '<div class="tool-stack">' + s.tools.map(function (t) {
+          return '<span class="tool-card-wrap">' + toolCardHtml(t, m.streaming) + '</span>';
+        }).join('') + '</div>';
+      }
+      out += '</div>';
+    });
+    out += '</div>';
+    return out;
   }
   // ---- 工具卡片（对标 DSH：图标 + 状态 + 路径参数 + 展开详情） ----
   function toolCardHtml(t, streaming) {
@@ -1748,7 +1816,7 @@ svg { flex: none; }
     renderTimeline();
 
     try {
-      var asstMsg = { role: 'asst', kind: 'asst', text: '', time: new Date().toISOString(), streaming: true };
+      var asstMsg = { role: 'asst', kind: 'asst', text: '', time: new Date().toISOString(), streaming: true, steps: [], _curStep: -1 };
       state.msgs.push(asstMsg);
       renderTimeline();
 
@@ -1846,14 +1914,38 @@ svg { flex: none; }
       items.forEach(function (ev) {
         var type = ev.type || '';
         var kind = ev.kind || '';
-        if (type === 'assistant/chunk' && kind === 'text') { asstMsg.text += ev.text || ''; }
-        else if (type === 'assistant/message' && kind === 'text') { asstMsg.text = ev.text || asstMsg.text; }
+        if (kind === 'step-start' || type === 'step/start') {
+          // 分步边界：开一个新的 step 卡片
+          var ns = { idx: asstMsg.steps.length, text: '', thinking: '', tools: null, on: false };
+          asstMsg.steps.push(ns);
+          asstMsg._curStep = ns;
+          return;
+        }
+        if (kind === 'step-end' || type === 'step/end' || type === 'turn/end') return; // 边界事件不累积
+        // 定位当前 step（无 step/start 事件时按 ev.step 编号变化自动分行）
+        var cur = asstMsg._curStep;
+        if (typeof ev.step === 'number' && (!cur || cur._s !== ev.step)) {
+          if (!cur || cur._s !== ev.step) {
+            cur = { idx: asstMsg.steps.length, text: '', thinking: '', tools: null, _s: ev.step, on: false };
+            asstMsg.steps.push(cur); asstMsg._curStep = cur;
+          }
+        }
+        // 文本增量
+        if (type === 'assistant/chunk' && kind === 'text') {
+          asstMsg.text += ev.text || '';
+          if (cur) cur.text += ev.text || '';
+        }
+        else if (type === 'assistant/message' && kind === 'text') {
+          asstMsg.text = ev.text || asstMsg.text;
+          if (cur) cur.text = ev.text || cur.text;
+        }
         else if (type === 'assistant/chunk' && kind === 'thinking') {
           asstMsg.thinking = (asstMsg.thinking || '') + (ev.text || '');
+          if (cur) cur.thinking = (cur.thinking || '') + (ev.text || '');
           if (asstMsg.thinking.length > 6000) asstMsg.thinking = asstMsg.thinking.slice(-6000);
         }
         else if (type === 'tool/call') {
-          // 工具调用：进入"执行中"状态，带 callId 供 tool/result 配对
+          // 工具调用：进入"执行中"状态
           asstMsg.tools = asstMsg.tools || [];
           var tid = ev.callId || ('tc-' + asstMsg.tools.length);
           var existing = asstMsg.tools.filter(function (t) { return t.callId === tid; });
@@ -1863,6 +1955,12 @@ svg { flex: none; }
             if (!ex.arguments && ev.arguments) ex.arguments = ev.arguments;
           } else {
             asstMsg.tools.push({ name: ev.text || '工具', callId: tid, argsSummary: ev.argsSummary, arguments: ev.arguments, running: true });
+          }
+          if (cur) {
+            cur.tools = cur.tools || [];
+            if (!cur.tools.some(function (t) { return t.callId === tid; })) {
+              cur.tools.push({ name: ev.text || '工具', callId: tid, argsSummary: ev.argsSummary, arguments: ev.arguments, running: true });
+            }
           }
         }
         else if (type === 'tool/result') {
@@ -1876,6 +1974,11 @@ svg { flex: none; }
               h.running = false; h.result = ev.result; h.isError = ev.isError;
             } else {
               asstMsg.tools.push({ name: ev.text ? '工具结果' : '工具', callId: rid, result: ev.result, isError: ev.isError, running: false });
+            }
+            if (cur) {
+              cur.tools = cur.tools || [];
+              var ch = cur.tools.filter(function (t) { return t.callId === rid; });
+              if (ch.length) { ch[0].running = false; ch[0].result = ev.result; ch[0].isError = ev.isError; }
             }
           }
         }
@@ -2086,13 +2189,38 @@ svg { flex: none; }
         state.currentSess.permissions = it.permissions;
         state.currentSess.contextPressure = it.contextPressure;
         state.currentSess.running = it.running;
+        state.currentSess.todos = it.todos;
+        state.currentSess.plan = it.plan;
         // 同步抽屉里的会话（这样抽屉状态点也实时）
         var ds = state.sessions.find(function (x) { return x.sessionId === targetId; });
-        if (ds) { ds.stats = it.stats; ds.tokenUsage = it.tokenUsage; ds.permissions = it.permissions; ds.contextPressure = it.contextPressure; ds.running = it.running; }
+        if (ds) { ds.stats = it.stats; ds.tokenUsage = it.tokenUsage; ds.permissions = it.permissions; ds.contextPressure = it.contextPressure; ds.running = it.running; ds.todos = it.todos; ds.plan = it.plan; }
         renderTaskStat();
         renderPermPill();
+        renderTodos();
       }
     } catch (e) { /* 网络抖动忽略 */ }
+  }
+  // 任务清单面板：展示模型 todo_write 规划的分步步骤（in_progress/pending/completed）
+  var todoStatusMap = { 'in_progress': '进行中', 'pending': '待办', 'completed': '已完成' };
+  function renderTodos() {
+    var panel = $('todoPanel');
+    var list = $('todoList');
+    var sess = state.currentSess;
+    var todos = (sess && Array.isArray(sess.todos) && sess.todos.length) ? sess.todos : null;
+    if (!todos) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+    list.textContent = '';
+    $('todoCount').textContent = todos.length + ' 步';
+    todos.forEach(function (t, i) {
+      var status = t.status || 'pending';
+      var done = status === 'completed';
+      var it = document.createElement('div');
+      it.className = 'todo-item' + (status === 'in_progress' ? ' running' : done ? ' done' : '');
+      it.innerHTML = '<span class="todo-ic">' + (done ? '&#10003;' : (status === 'in_progress' ? '<span class="spin" style="width:10px;height:10px"></span>' : String(i + 1))) + '</span>' +
+        '<span class="todo-text">' + esc(t.content || '') + '</span>' +
+        '<span class="todo-status">' + (todoStatusMap[status] || status) + '</span>';
+      list.appendChild(it);
+    });
   }
   async function refreshSessions() {
     if (!state.currentWs) return;
