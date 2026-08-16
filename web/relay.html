@@ -35,6 +35,45 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 }
+/* 浅色主题（对标 DSH 浅色外观） */
+[data-theme="light"] {
+  --bg: #F5F6F8;
+  --bg-el: #FFFFFF;
+  --bg-sel: #E9ECF1;
+  --bg-drawer: #EDEFF3;
+  --border: rgba(31, 42, 68, 0.12);
+  --border-strong: rgba(31, 42, 68, 0.2);
+  --text: #1A2130;
+  --text-2: #5A6472;
+  --text-3: #8B93A1;
+  --blue: #2563EB;
+  --blue-2: #3B82F6;
+  --blue-soft: rgba(59, 130, 246, 0.12);
+  --green: #16A34A;
+  --green-soft: rgba(22, 163, 74, 0.12);
+  --red: #DC2626;
+  --red-soft: rgba(220, 38, 38, 0.12);
+  --gold: #B7791F;
+}
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] {
+    --bg: #F5F6F8;
+    --bg-el: #FFFFFF;
+    --bg-sel: #E9ECF1;
+    --bg-drawer: #EDEFF3;
+    --border: rgba(31, 42, 68, 0.12);
+    --border-strong: rgba(31, 42, 68, 0.2);
+    --text: #1A2130;
+    --text-2: #5A6472;
+    --text-3: #8B93A1;
+    --blue: #2563EB;
+    --blue-2: #3B82F6;
+    --blue-soft: rgba(59, 130, 246, 0.12);
+    --green: #16A34A;
+    --green-soft: rgba(22, 163, 74, 0.12);
+    --gold: #B7791F;
+  }
+}
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
 body {
@@ -488,6 +527,9 @@ svg { flex: none; }
 .settings-card { background: var(--bg-el); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
 .set-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 14px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .set-row:last-child { border-bottom: none; }
+.theme-opts { display: flex; gap: 8px; }
+.theme-opts button { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-2); font-size: 13px; background: var(--bg-sel); }
+.theme-opts button.on { border-color: var(--blue); color: var(--blue-2); background: var(--blue-soft); }
 .set-l { flex: 1; min-width: 0; }
 .set-t { font-size: 14px; font-weight: 600; }
 .set-s { font-size: 12px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -845,6 +887,19 @@ svg { flex: none; }
             <div class="set-l"><div class="set-t">断开连接</div><div class="set-s">清除保存的服务器和令牌</div></div>
           </button>
         </div>
+        <div class="sec-title" style="margin-top:18px"><span>外观</span></div>
+        <div class="settings-card" id="themeCard">
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">主题</div><div class="set-s">界面外观颜色</div></div>
+          </div>
+          <div class="set-row">
+            <div class="theme-opts" id="themeOpts">
+              <button type="button" data-theme="dark">深色</button>
+              <button type="button" data-theme="light">浅色</button>
+              <button type="button" data-theme="system">跟随系统</button>
+            </div>
+          </div>
+        </div>
         <div class="sec-title" style="margin-top:18px"><span>关于</span></div>
         <div class="settings-card">
           <div class="set-row">
@@ -886,6 +941,7 @@ svg { flex: none; }
     taskStat: { input: 0, output: 0, cacheRead: 0 }, // 当前任务 token 统计（最下方展示）
     apprTimer: null,
     sessQuery: '',
+    theme: load('theme', 'system'),
   };
 
   function toast(msg, isErr) {
@@ -2564,6 +2620,32 @@ svg { flex: none; }
     $('setServer').textContent = state.base || '-';
     $('setConn').textContent = $('connLabel').textContent;
     $('setVersion').textContent = $('connLabel').textContent;
+    // 主题按钮高亮
+    var opts = $('themeOpts');
+    if (opts) {
+      opts.querySelectorAll('button').forEach(function (b) {
+        b.classList.toggle('on', b.dataset.theme === state.theme);
+      });
+    }
+  }
+  // 应用主题（dark/light/system → data-theme）
+  function applyTheme() {
+    if (state.theme === 'system') {
+      document.documentElement.setAttribute('data-theme', 'system');
+    } else {
+      document.documentElement.setAttribute('data-theme', state.theme);
+    }
+    var opts = $('themeOpts');
+    if (opts) {
+      opts.querySelectorAll('button').forEach(function (b) {
+        b.classList.toggle('on', b.dataset.theme === state.theme);
+      });
+    }
+  }
+  function setTheme(t) {
+    state.theme = (t === 'light' || t === 'dark') ? t : 'system';
+    save('theme', state.theme);
+    applyTheme();
   }
   function disconnect() {
     state.base = ''; state.token = '';
@@ -2576,6 +2658,7 @@ svg { flex: none; }
 
   // ============ 装配 ============
   function init() {
+    applyTheme(); // 应用保存的主题
     $('serverUrl').value = state.base;
     $('tokenInput').value = state.token;
     $('connectBtn').addEventListener('click', connect);
@@ -2616,6 +2699,11 @@ svg { flex: none; }
     $('agentsRefresh').addEventListener('click', loadAgents);
     $('settingsBtn').addEventListener('click', function () { closeDrawer(); renderSettings(); showPane('paneSettings'); });
     $('settingsBackBtn').addEventListener('click', function () { showPane('paneChat'); });
+    // 主题切换
+    $('themeOpts').addEventListener('click', function (e) {
+      var btn = e.target.closest ? e.target.closest('button[data-theme]') : null;
+      if (btn) setTheme(btn.dataset.theme);
+    });
     $('wsBackBtn').addEventListener('click', function () { showPane('paneChat'); });
     $('filesBack').addEventListener('click', function () {
       if (fileStack.length > 1) { fileStack.pop(); renderFiles(fileStack[fileStack.length - 1]); }
