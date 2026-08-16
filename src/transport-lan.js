@@ -600,6 +600,25 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         sendJson(res, 200, { ok: true, ns: out.ns, result: out.result });
         return;
       }
+      // ---- DSH 凭据（API 密钥导入）：POST /api/dsh-credentials {action:'set'|'unset', ref, value?} ----
+      if (req.method === 'POST' && url.pathname === '/api/dsh-credentials') {
+        if (!auth(req, res)) return;
+        const body = await readBody(req);
+        if (body.action === 'set') {
+          if (typeof executor.credentialsSet !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+          const out = await executor.credentialsSet({ ref: body.ref, value: body.value });
+          sendJson(res, out.ok ? 200 : 400, out);
+          return;
+        }
+        if (body.action === 'unset') {
+          if (typeof executor.credentialsUnset !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+          const out = await executor.credentialsUnset({ ref: body.ref });
+          sendJson(res, out.ok ? 200 : 400, out);
+          return;
+        }
+        sendJson(res, 400, { ok: false, error: 'action 必填 (set|unset)' });
+        return;
+      }
       // ---- Agent 预设（模式切换：标准/PTC/极简/创造）----
       if (req.method === 'GET' && url.pathname === '/api/dsh-presets') {
         if (!auth(req, res)) return;

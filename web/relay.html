@@ -1006,10 +1006,11 @@ svg { flex: none; }
         <div class="sheet-body">
           <div class="field"><label>提供方 ID</label><input id="provId" type="text" placeholder="如 my-provider" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
           <div class="field"><label>API 密钥环境变量名（在电脑端设置该环境变量）</label><input id="provKeyEnv" type="text" placeholder="如 MY_API_KEY" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+          <div class="field"><label>API 密钥（可选，直接存入电脑端 DSH 凭据）</label><input id="provKey" type="password" placeholder="sk-..." autocomplete="off" autocapitalize="off" spellcheck="false"></div>
           <div class="field"><label>Base URL（可选，留空用默认）</label><input id="provBase" type="text" placeholder="https://api.example.com/v1" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
           <div class="field"><label>模型 ID（逗号分隔，可选）</label><input id="provModels" type="text" placeholder="model-a, model-b" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
           <button class="btn" id="provSaveBtn" type="button">保 存</button>
-          <div class="hint" id="provHint">保存后写入电脑端 DSH 设置；密钥请用电脑端环境变量，不会经过手机。</div>
+          <div class="hint" id="provHint">密钥只写入电脑端 DSH 凭据（credentials.set），不经过设置文件、不回传手机。</div>
         </div>
       </div>
     </div>
@@ -3380,11 +3381,17 @@ svg { flex: none; }
     });
   }
   var provEditing = null;
+  // 密钥引用名：默认取 apiKeyEnv，没有则按 DSH 规则派生（ID 大写 + _API_KEY）
+  function provKeyRef(id, apiKeyEnv) {
+    if (apiKeyEnv && apiKeyEnv.trim()) return apiKeyEnv.trim();
+    return String(id || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_') + '_API_KEY';
+  }
   function openProviderSheet(id, p) {
     provEditing = id || null;
     $('provTitle').textContent = id ? ('编辑 ' + id) : '添加提供方';
     $('provId').value = id || '';
     $('provKeyEnv').value = (p && p.apiKeyEnv) || '';
+    $('provKey').value = '';
     $('provBase').value = (p && p.baseURL) || '';
     var models = (p && Array.isArray(p.models)) ? p.models.map(function (m) { return m.id || m; }).join(', ') : '';
     $('provModels').value = models;
@@ -3402,16 +3409,29 @@ svg { flex: none; }
     var ms = $('provModels').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
     if (ms.length) profile.models = ms.map(function (m) { return { id: m, name: m }; });
     var ok = await mutateSetting('llm-pi-ai', [{ op: 'set', path: ['providers', id], value: profile }]);
-    if (ok) {
+    if (!ok) return;
+    // API 密钥：直接写入电脑端 DSH 凭据（不回传、不进设置文件）
+    var keyVal = $('provKey').value.trim();
+    if (keyVal) {
+      try {
+        var cd = await api('/api/dsh-credentials', { method: 'POST', body: JSON.stringify({ action: 'set', ref: provKeyRef(id, ke), value: keyVal }), timeoutMs: 10000 });
+        if (!cd || !cd.ok) { toast('提供方已保存，但密钥写入失败', true); }
+        else toast('已保存提供方 + 密钥');
+      } catch (e) { toast('提供方已保存，密钥写入失败：' + e.message, true); }
+    } else {
       toast('已保存提供方');
-      $('provMask').classList.add('hidden');
-      loadDshSettings();
     }
+    $('provMask').classList.add('hidden');
+    loadDshSettings();
   }
   async function deleteProvider(id) {
     if (!confirm('删除提供方 "' + id + '"？')) return;
     var ok = await mutateSetting('llm-pi-ai', [{ op: 'unset', path: ['providers', id] }]);
-    if (ok) { toast('已删除'); loadDshSettings(); }
+    if (!ok) return;
+    // 同步清电脑端凭据（幂等）
+    try { await api('/api/dsh-credentials', { method: 'POST', body: JSON.stringify({ action: 'unset', ref: provKeyRef(id, '') }), timeoutMs: 10000 }); } catch (e) {}
+    toast('已删除');
+    loadDshSettings();
   }
   function renderSettings() {
     $('setServer').textContent = state.base || '-';

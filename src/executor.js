@@ -568,6 +568,24 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         return { ok: false, code: 'backend-unavailable', error: 'settings.mutate 失败: ' + msg };
       }
     },
+    // POST /api/dsh-credentials {action:'set'|'unset', ref, value?}：DSH 凭据（API 密钥），对标桌面设置面板
+    async credentialsSet({ ref, value } = {}) {
+      const r = String(ref || '').trim();
+      if (!r) return { ok: false, code: 'bad-request', error: 'ref 必填' };
+      if (!value) return { ok: false, code: 'bad-request', error: 'value 必填' };
+      try {
+        await fetchRpc('credentials.set', { ref: r, value: String(value) });
+        return { ok: true };
+      } catch (e) { return { ok: false, code: 'backend-unavailable', error: 'credentials.set 失败: ' + String(e) }; }
+    },
+    async credentialsUnset({ ref } = {}) {
+      const r = String(ref || '').trim();
+      if (!r) return { ok: false, code: 'bad-request', error: 'ref 必填' };
+      try {
+        await fetchRpc('credentials.unset', { ref: r });
+        return { ok: true };
+      } catch (e) { return { ok: false, code: 'backend-unavailable', error: 'credentials.unset 失败: ' + String(e) }; }
+    },
     async getSessionModels(sessionId) {
       const sid = String(sessionId || '').trim();
       if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
