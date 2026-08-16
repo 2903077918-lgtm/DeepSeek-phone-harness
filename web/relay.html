@@ -249,7 +249,7 @@ svg { flex: none; }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   width: 100%; min-height: 46px; padding: 0 18px; border-radius: var(--radius-sm);
-  font-size: 15px; font-weight: 600; color: #0D0F13;
+  font-size: 15px; font-weight: 600; color: #fff;
   background: var(--blue); transition: transform 0.08s, opacity 0.15s;
 }
 .btn:active { transform: scale(0.98); }
@@ -1141,6 +1141,7 @@ svg { flex: none; }
     apprTimer: null,
     sessQuery: '',
     drawerShowAll: false,     // 抽屉“展开其余 N 个会话”
+    editorReturn: 'paneFiles', // 代码查看页返回目标（文件浏览器 | 设置页）
     theme: load('theme', 'dark'),   // 手机端默认深色；设置里可切 浅色/跟随系统
   };
 
@@ -1524,6 +1525,9 @@ svg { flex: none; }
     renderApprovals();
     renderTaskStat();
     renderTodos();
+    // 轨迹面板开着时同步刷新（消息流式更新后内容不陈旧）
+    var tp = $('trajPanel');
+    if (tp && !tp.classList.contains('hidden')) renderTrajectory();
     tl.scrollTop = tl.scrollHeight;
   }
   // 最下方统计条：token 用量 / 缓存命中
@@ -2614,6 +2618,7 @@ svg { flex: none; }
   // ============ 文件浏览（代码界面） ============
   var fileStack = [];
   async function openFileBrowser(basePath) {
+    state.editorReturn = 'paneFiles'; // 文件浏览器 → 代码查看返回文件浏览器
     fileStack = basePath ? [basePath] : [];
     showPane('paneFiles');
     await renderFiles(fileStack.length ? fileStack[fileStack.length - 1] : (state.currentWs ? state.currentWs.path : '.'));
@@ -2648,6 +2653,7 @@ svg { flex: none; }
     }
   }
   async function openFileViewer(fp) {
+    state.editorReturn = state.editorReturn || 'paneFiles'; // 默认来自文件浏览器；设置页打开配置文件时覆盖
     showPane('paneEditor');
     $('editorPath').textContent = fp;
     $('editorMeta').textContent = '加载中…';
@@ -3036,7 +3042,10 @@ svg { flex: none; }
     $('setOpenCfg').addEventListener('click', async function () {
       try {
         var d = await api('/api/dsh-config', { timeoutMs: 6000 });
-        if (d && d.ok && d.path) { openFileViewer(d.path); }
+        if (d && d.ok && d.path) {
+          state.editorReturn = 'paneSettings'; // 返回键回到设置页
+          openFileViewer(d.path);
+        }
         else { toast((d && d.error) || '获取配置路径失败', true); }
       } catch (e) { toast('失败：' + e.message, true); }
     });
@@ -3051,7 +3060,7 @@ svg { flex: none; }
       if (fileStack.length > 1) { fileStack.pop(); renderFiles(fileStack[fileStack.length - 1]); }
       else showPane('paneChat');
     });
-    $('editorBack').addEventListener('click', function () { showPane('paneFiles'); });
+    $('editorBack').addEventListener('click', function () { showPane(state.editorReturn || 'paneFiles'); });
     $('editorRefresh').addEventListener('click', function () {
       var fp = $('editorPath').textContent;
       if (fp) openFileViewer(fp);
