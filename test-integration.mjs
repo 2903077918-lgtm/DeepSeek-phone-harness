@@ -1,10 +1,14 @@
 // 集成验证：会话连续性 + 新 UI + history 过滤
 // 用法：node test-integration.mjs <token>
 import { readFileSync } from 'node:fs';
+import { agentReady } from './test-utils/agent-ready.mjs';
 
 const token = process.argv[2] || JSON.parse(readFileSync('C:/Users/Joey/Documents/phone-harness/config.json', 'utf8')).token;
 const base = 'http://127.0.0.1:8788';
 const h = { 'content-type': 'application/json', authorization: 'Bearer ' + token };
+
+// 前置：agent 未启动时给出清晰提示而非 fetch 抛错
+await agentReady(token);
 
 async function api(path, opts = {}) {
   const r = await fetch(base + path, { ...opts, headers: h });
@@ -19,7 +23,7 @@ function check(name, cond, detail = '') {
 
 // 1. 新 UI
 const page = await (await fetch(base + '/', { headers: { authorization: 'Bearer ' + token } })).text();
-check('UI 为深色对话流（含用户/助手气泡样式）', page.includes('#4D6BFE') || page.includes('4D6BFE'), '品牌色检测');
+check('UI 为深色对话流（含用户/助手气泡样式）', page.includes('#4070E0'), '品牌色检测');
 check('UI 含会话管理', page.includes('sessions') || page.includes('新会话'), '');
 
 // 2. 会话列表 API

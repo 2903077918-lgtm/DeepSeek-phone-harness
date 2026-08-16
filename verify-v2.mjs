@@ -1,6 +1,8 @@
 // 集成验证：UI + 后端新字段
 import { readFileSync } from 'node:fs';
+import { agentReady } from './test-utils/agent-ready.mjs';
 const token = JSON.parse(readFileSync('C:/Users/Joey/Documents/phone-harness/config.json', 'utf8')).token;
+await agentReady(token);
 const h = { 'content-type': 'application/json', authorization: 'Bearer ' + token };
 
 const page = await (await fetch('http://127.0.0.1:8788/', { headers: { authorization: 'Bearer ' + token } })).text();

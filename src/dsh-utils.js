@@ -2,7 +2,8 @@
 // 从 executor.js 拆分而来，供执行器 / 审批中继 / 传输层复用。
 // 本模块不持有状态，全部为纯函数与无状态工具。
 
-export const WEB_API_BASE = 'http://127.0.0.1:3080';
+// DSH Web API 基址。可用环境变量 DSH_WEB_API_BASE 覆盖（本地单测用 mock server）；默认局域网 DSH 实例。
+export const WEB_API_BASE = (process.env.DSH_WEB_API_BASE || 'http://127.0.0.1:3080').replace(/\/+$/, '');
 
 export function cryptoRandom() {
   return 'rpc-' + Math.random().toString(36).slice(2, 12) + Date.now().toString(36);

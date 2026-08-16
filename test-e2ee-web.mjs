@@ -38,7 +38,6 @@ const phonePlain = await decrypt(phoneKey, resBox, aad);
 check('Agent加密→手机解密往返', phonePlain && new TextDecoder().decode(phonePlain) === 'C 盘剩余 128GB');
 
 // 篡改密文 → 解密失败
-const tamper = { ...box, ciphertext: (() => { const b = box.ciphertext.replace(/-/g,'+').replace(/_/g,'/'); return box.ciphertext; })() };
 const bad = await decrypt(agentKey, { ciphertext: flip(box.ciphertext), iv: box.iv, tag: box.tag }, aad);
 check('篡改密文认证失败', bad === null);
 

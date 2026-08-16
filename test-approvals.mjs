@@ -1,10 +1,14 @@
 // 审批功能集成验证
 // 用法：node test-approvals.mjs
 import { readFileSync } from 'node:fs';
+import { agentReady } from './test-utils/agent-ready.mjs';
 
 const token = JSON.parse(readFileSync('C:/Users/Joey/Documents/phone-harness/config.json', 'utf8')).token;
 const base = 'http://127.0.0.1:8788';
 const h = { 'content-type': 'application/json', authorization: 'Bearer ' + token };
+
+// 前置：agent 未启动时给出清晰提示而非 fetch 抛错
+await agentReady(token);
 
 const results = [];
 function check(name, cond, detail = '') {

@@ -1,5 +1,9 @@
 // End-to-end test: simulate phone -> agent -> dsh headless -> result
-const token = '86aa0b22429757ed8a2eb143b4713edca493901765447419';
+import { readFileSync } from 'node:fs';
+import { agentReady } from './test-utils/agent-ready.mjs';
+await agentReady();
+
+const token = JSON.parse(readFileSync('C:/Users/Joey/Documents/phone-harness/config.json', 'utf8')).token;
 const base = 'http://127.0.0.1:8788';
 const headers = { 'content-type': 'application/json', authorization: 'Bearer ' + token };
 
