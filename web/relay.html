@@ -177,6 +177,17 @@ svg { flex: none; }
 .ws-row .ws-chev { color: var(--text-3); flex: none; }
 .drawer-item .time { flex: none; font-size: 10.5px; color: var(--text-3); margin-left: 4px; }
 .drawer-item .main { display: flex; flex-direction: column; }
+/* 会话行 ⋮ 按钮：触屏可见（桌面 hover 三按钮走 drawer-del） */
+.sess-more {
+  display: none; place-items: center; width: 28px; height: 28px; flex: none;
+  border-radius: 7px; color: var(--text-3);
+}
+.sess-more:hover { background: var(--bg-sel); color: var(--text); }
+@media (hover: none) {
+  .drawer-item .sess-more { display: grid; }
+}
+.model-item.danger .m-name { color: var(--red); }
+.model-item.danger svg { color: var(--red); }
 .drawer-expand {
   width: 100%; text-align: left; padding: 9px 12px; margin-top: 2px;
   font-size: 12.5px; color: var(--blue-2); border-radius: 9px;
@@ -407,10 +418,13 @@ svg { flex: none; }
 .tool-line.run { color: #C6D2FF; }
 .tool-line.done { color: var(--text-2); }
 /* 任务清单面板（todo_write 分步） */
-.todo-panel { flex: none; border-bottom: 1px solid var(--border); background: var(--bg-drawer); padding: 8px 14px; }
-.todo-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.todo-panel { flex: none; border-bottom: 1px solid var(--border); background: var(--bg-drawer); padding: 4px 14px 8px; }
+.todo-head { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none; color: inherit; padding: 4px 0 6px; cursor: pointer; }
 .todo-title { font-size: 12px; font-weight: 700; color: var(--blue-2); }
 .todo-count { margin-left: auto; font-size: 11px; color: var(--text-2); }
+.todo-chev { color: var(--text-3); flex: none; transition: transform 0.15s; }
+.todo-panel.collapsed .todo-chev { transform: rotate(-90deg); }
+.todo-panel.collapsed .todo-list { display: none; }
 .todo-list { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
 .todo-item { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; font-size: 12.5px; }
 .todo-item.running { background: var(--blue-soft); }
@@ -642,6 +656,20 @@ svg { flex: none; }
 .theme-opts { display: flex; gap: 8px; }
 .theme-opts button { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-2); font-size: 13px; background: var(--bg-sel); }
 .theme-opts button.on { border-color: var(--blue); color: var(--blue-2); background: var(--blue-soft); }
+/* 设置页分段选择器（对标 DSH 设置面板） */
+.seg { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; }
+.seg button { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border-strong); color: var(--text-2); font-size: 12.5px; background: var(--bg-sel); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg button.on { border-color: var(--blue); color: var(--blue-2); background: var(--blue-soft); font-weight: 600; }
+/* 提供方列表 */
+.provider-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+.provider-item:last-child { border-bottom: none; }
+.provider-item .pi-main { flex: 1; min-width: 0; }
+.provider-item .pi-t { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.provider-item .pi-s { font-size: 11.5px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
+.provider-item .pi-act { flex: none; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--text-3); }
+.provider-item .pi-act:hover { background: var(--bg-sel); color: var(--text); }
+.provider-item .pi-act.del:hover { background: var(--red-soft); color: var(--red); }
+.provider-empty { padding: 14px; text-align: center; font-size: 12px; color: var(--text-3); }
 .set-l { flex: 1; min-width: 0; }
 .set-t { font-size: 14px; font-weight: 600; }
 .set-s { font-size: 12px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -717,6 +745,8 @@ svg { flex: none; }
 @media (min-width: 900px) {
   .drawer { position: static; transform: none; width: 320px; }
   .scrim { display: none; }
+  /* 聊天列居中限宽，避免内容被拉得过宽 */
+  .main { max-width: 900px; margin: 0 auto; width: 100%; }
 }
 </style>
 </head>
@@ -884,9 +914,13 @@ svg { flex: none; }
         <span class="conn-banner-text" id="connBannerText"></span>
         <button class="conn-banner-btn" id="connBannerBtn" type="button">重连</button>
       </div>
-      <!-- 任务清单面板：展示模型 todo_write 规划的分步步骤 -->
+      <!-- 任务清单面板：展示模型 todo_write 规划的分步步骤（可收起/展开） -->
       <div class="todo-panel hidden" id="todoPanel">
-        <div class="todo-head"><span class="todo-title">&#10003; 任务清单</span><span class="todo-count" id="todoCount"></span></div>
+        <button class="todo-head" id="todoHead" type="button" title="收起 / 展开">
+          <span class="todo-title">&#10003; 任务清单</span>
+          <span class="todo-count" id="todoCount"></span>
+          <svg class="todo-chev" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
         <div class="todo-list" id="todoList"></div>
       </div>
       <div class="timeline" id="timeline"></div>
@@ -938,6 +972,45 @@ svg { flex: none; }
         <div class="sheet-head"><div class="sheet-title">权限</div><button class="icon-btn" id="permClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
         <div class="sheet-body" id="permList"></div>
         <div class="perm-note" id="permNote"></div>
+      </div>
+    </div>
+
+    <!-- 会话操作面板（手机端：长按 / ⋮ 弹分支·重命名·删除） -->
+    <div class="sheet-mask hidden" id="sessMask">
+      <div class="sheet">
+        <div class="sheet-head"><div class="sheet-title" id="sessSheetTitle">会话操作</div><button class="icon-btn" id="sessClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+        <div class="sheet-body" id="sessSheetBody">
+          <button class="model-item" id="sessForkBtn" type="button">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            <span class="m-name">分支会话</span>
+            <span class="m-desc">创建独立副本继续</span>
+          </button>
+          <button class="model-item" id="sessRenameBtn" type="button">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            <span class="m-name">重命名</span>
+            <span class="m-desc">修改会话标题</span>
+          </button>
+          <button class="model-item danger" id="sessDelBtn" type="button">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            <span class="m-name">删除会话</span>
+            <span class="m-desc">从列表移除</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 提供方编辑面板（添加/编辑电脑端 DSH 模型提供方） -->
+    <div class="sheet-mask hidden" id="provMask">
+      <div class="sheet">
+        <div class="sheet-head"><div class="sheet-title" id="provTitle">添加提供方</div><button class="icon-btn" id="provClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+        <div class="sheet-body">
+          <div class="field"><label>提供方 ID</label><input id="provId" type="text" placeholder="如 my-provider" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+          <div class="field"><label>API 密钥环境变量名（在电脑端设置该环境变量）</label><input id="provKeyEnv" type="text" placeholder="如 MY_API_KEY" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+          <div class="field"><label>Base URL（可选，留空用默认）</label><input id="provBase" type="text" placeholder="https://api.example.com/v1" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+          <div class="field"><label>模型 ID（逗号分隔，可选）</label><input id="provModels" type="text" placeholder="model-a, model-b" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+          <button class="btn" id="provSaveBtn" type="button">保 存</button>
+          <div class="hint" id="provHint">保存后写入电脑端 DSH 设置；密钥请用电脑端环境变量，不会经过手机。</div>
+        </div>
       </div>
     </div>
 
@@ -1061,8 +1134,13 @@ svg { flex: none; }
         <div class="sec-title"><span>通用设置</span></div>
         <div class="settings-card">
           <div class="set-row">
-            <div class="set-l"><div class="set-t">权限</div><div class="set-s">选择新会话的默认权限模式</div></div>
-            <span class="set-val" id="setPerm">—</span>
+            <div class="set-l"><div class="set-t">新会话默认权限</div><div class="set-s">影响之后新建的会话（当前会话见权限面板）</div></div>
+          </div>
+          <div class="set-row">
+            <div class="seg" id="segPermDefault">
+              <button type="button" data-v="workspace-write">工作区写入</button>
+              <button type="button" data-v="danger-full-access">完全访问</button>
+            </div>
           </div>
           <div class="set-row">
             <div class="set-l"><div class="set-t">外观</div><div class="set-s">界面颜色</div></div>
@@ -1075,12 +1153,22 @@ svg { flex: none; }
             </div>
           </div>
           <div class="set-row">
-            <div class="set-l"><div class="set-t">繁忙时 Enter 键行为</div><div class="set-s">智能体运行时按 Enter</div></div>
-            <span class="set-val">发送</span>
+            <div class="set-l"><div class="set-t">繁忙时 Enter 键行为</div><div class="set-s">智能体运行时按 Enter 发送</div></div>
           </div>
           <div class="set-row">
-            <div class="set-l"><div class="set-t">语言</div><div class="set-s">界面语言</div></div>
-            <span class="set-val">中文</span>
+            <div class="seg" id="segBusyEnter">
+              <button type="button" data-v="queue">排队发送</button>
+              <button type="button" data-v="steer">插话发送</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">语言</div><div class="set-s">电脑端 DSH 界面语言</div></div>
+          </div>
+          <div class="set-row">
+            <div class="seg" id="segLocale">
+              <button type="button" data-v="zh">中文</button>
+              <button type="button" data-v="en">English</button>
+            </div>
           </div>
           <button class="set-row set-btn" id="setOpenCfg" type="button">
             <div class="set-l"><div class="set-t">打开配置文件</div><div class="set-s">在电脑端打开 DSH 配置文件</div></div>
@@ -1093,8 +1181,15 @@ svg { flex: none; }
             <div class="set-l"><div class="set-t">当前模型</div><div class="set-s" id="setModel">-</div></div>
           </div>
           <div class="set-row">
-            <div class="set-l"><div class="set-t">提供方</div><div class="set-s">填入各提供方的 API 密钥即可使用其模型</div></div>
-            <span class="set-val" id="setProvider">-</span>
+            <div class="set-l"><div class="set-t">提供方</div><div class="set-s">编辑电脑端 DSH 的模型提供方</div></div>
+          </div>
+          <div id="providerList"></div>
+          <button class="set-row set-btn" id="providerAddBtn" type="button">
+            <div class="set-l"><div class="set-t">+ 添加提供方</div><div class="set-s">填写提供方 ID 与配置</div></div>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">API 密钥</div><div class="set-s">在电脑端 DSH 凭据中管理，不会发送到手机</div></div>
           </div>
         </div>
         <div class="sec-title" style="margin-top:18px"><span>连接</span></div>
@@ -1162,6 +1257,13 @@ svg { flex: none; }
     sessQuery: '',
     drawerShowAll: false,     // 抽屉“展开其余 N 个会话”
     editorReturn: 'paneFiles', // 代码查看页返回目标（文件浏览器 | 设置页）
+    // 实时跟随（SSE 推送，对标 DSH events.mux）：打开会话即长连接收事件，替代 800ms 轮询
+    followAbort: null,        // 当前 SSE 连接的 AbortController
+    liveMsg: null,            // 正在流式的实时助手消息
+    followBase: 0,            // SSE 已消费到的事件 seq
+    statusTimer: null,        // 会话状态（轮/步/耗时/权限）周期刷新
+    busyEnter: load('busyEnter', 'steer'), // 繁忙时 Enter：steer 插话 / queue 排队（默认同 DSH ui-conversation.busyEnter）
+    pendingQueue: [],   // queue 模式下待补发的消息
     theme: load('theme', 'dark'),   // 手机端默认深色；设置里可切 浅色/跟随系统
   };
 
@@ -1264,7 +1366,7 @@ svg { flex: none; }
         $('chatSub').textContent = '';
         $('timeline').textContent = '';
         state.msgs = [];
-        appendMsg('asst', '点击顶栏「未选择工作区」选择电脑上的项目开始对话', { plain: true });
+        renderTimeline(); // DSH 欢迎空状态（顶栏工作区名可选择项目）
         showPane('paneChat');
         renderDrawer();
       }
@@ -1339,6 +1441,7 @@ svg { flex: none; }
     state.currentWs = ws;
     state.currentSess = null;
     state.taskStat = { input: 0, output: 0, cacheRead: 0 }; // 切换工作区清空统计，避免显示上个会话状态
+    stopLiveFollow(); stopStatusTimer(); state.liveMsg = null; // 停止上个会话的实时跟随
     save('wsId', ws.workspaceId); // 记忆上次工作区，下次连接直接进对话页
     $('wsLabel').textContent = ws.title || ws.path;
     $('chatTitle').textContent = ws.title || ws.path;
@@ -1352,7 +1455,7 @@ svg { flex: none; }
       state.sessions = (d && d.items) || [];
       renderDrawer();
       if (state.sessions.length) openSession(state.sessions[0]);
-      else { appendMsg('asst', '该工作区暂无会话，输入任务开始新对话', { plain: true }); }
+      else { renderTimeline(); } // 无会话：DSH 欢迎空状态
     } catch (e) { toast('加载会话失败：' + e.message, true); }
   }
 
@@ -1399,10 +1502,29 @@ svg { flex: none; }
       main.innerHTML = '<span class="drawer-title-row"><span class="ses-status' + (s.running ? ' run' : ' idle') + '"></span><span class="t">' + esc(title) + '</span></span>' +
         (s.running ? '<span class="s">进行中</span>' : '');
       main.title = String(s.cwd || '');
-      main.addEventListener('click', function () { openSession(s); closeDrawer(); });
+      // 长按 / 右键 → 会话操作面板（手机端入口）；长按后抑制随后的 click，避免同时打开会话
+      var lpFired = false, lpTimer = null;
+      main.addEventListener('touchstart', function (e) {
+        lpFired = false;
+        lpTimer = setTimeout(function () { lpFired = true; openSessSheet(s); }, 500);
+      }, { passive: true });
+      main.addEventListener('touchend', function () { clearTimeout(lpTimer); });
+      main.addEventListener('touchmove', function () { clearTimeout(lpTimer); }, { passive: true });
+      main.addEventListener('contextmenu', function (e) { e.preventDefault(); openSessSheet(s); });
+      main.addEventListener('click', function () {
+        if (lpFired) { lpFired = false; return; }
+        openSession(s); closeDrawer();
+      });
       var tm = document.createElement('span');
       tm.className = 'time';
       tm.textContent = fmtRelTime(s.updatedAt || s.updatedAtMs);
+      var more = document.createElement('button');
+      more.className = 'sess-more';
+      more.type = 'button';
+      more.title = '会话操作';
+      more.setAttribute('aria-label', '会话操作');
+      more.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
+      more.addEventListener('click', function (e) { e.stopPropagation(); openSessSheet(s); });
       var fk = document.createElement('button');
       fk.className = 'drawer-del';
       fk.title = '分支会话';
@@ -1420,6 +1542,7 @@ svg { flex: none; }
       del.addEventListener('click', function () { deleteSession(s); });
       it.appendChild(main);
       it.appendChild(tm);
+      it.appendChild(more);
       it.appendChild(fk);
       it.appendChild(rn);
       it.appendChild(del);
@@ -1434,6 +1557,14 @@ svg { flex: none; }
       list.appendChild(ex);
     }
   }
+  // 会话操作面板（手机端：⋮ / 长按 / 右键 → 分支·重命名·删除）
+  var sessSheetTarget = null;
+  function openSessSheet(s) {
+    sessSheetTarget = s;
+    $('sessSheetTitle').textContent = (s.title || s.cwd || '会话').slice(0, 24) + (s.title && s.title.length > 24 ? '…' : '');
+    $('sessMask').classList.remove('hidden');
+  }
+  function closeSessSheet() { $('sessMask').classList.add('hidden'); sessSheetTarget = null; }
   // 分支会话（session.fork）
   async function forkSession(s) {
     if (!confirm('分支会话 "' + (s.title || s.cwd || '') + '"？（创建独立副本继续）')) return;
@@ -1507,6 +1638,15 @@ svg { flex: none; }
         }));
       }
       renderTimeline();
+      // 实时跟随：从当前水位开始收新事件（SSE 推送），并周期刷新会话状态（轮/步/耗时/权限）
+      state.followBase = 0;
+      try {
+        var probe = await api('/api/events?sessionId=' + enc(sess.sessionId) + '&afterSeq=0', { timeoutMs: 6000 });
+        if (probe && typeof probe.lastSeq === 'number') state.followBase = probe.lastSeq;
+      } catch (e) { /* 探测失败则从 0 跟随（可能重放少量缓冲，可接受） */ }
+      state.liveMsg = null;
+      startLiveFollow(sess.sessionId, state.followBase);
+      startStatusTimer();
     } catch (e) {
       if (!preserveRunning) {
         state.msgs = [];
@@ -1679,27 +1819,30 @@ svg { flex: none; }
     var list = $('trajList');
     if (!list) return;
     var q = ($('trajSearch').value || '').trim().toLowerCase();
-    var rows = [], turn = 0;
+    var rows = [], turn = 0, lastTs = 0;
     state.msgs.forEach(function (m) {
+      var ts = m.time ? new Date(m.time).getTime() : 0;
+      if (!ts) ts = lastTs;
       if (m.role === 'user' && m.text) {
-        rows.push({ type: 'user', text: m.text });
+        rows.push({ type: 'user', text: m.text, ts: ts });
       }
       if (m.role === 'asst' || m.role === 'assistant') {
         turn++;
         var txt = (m.thinking ? m.thinking + '\n' : '') + (m.text || '');
-        if (txt.trim()) rows.push({ type: 'asst', text: txt, meta: '轮 ' + turn });
+        if (txt.trim()) rows.push({ type: 'asst', text: txt, meta: '轮 ' + turn, ts: ts });
         (m.steps || []).forEach(function (st) {
           (st.tools || []).forEach(function (t) {
-            rows.push({ type: 'tool', text: t.name + (t.argsSummary ? '  ' + t.argsSummary : ''), meta: '轮 ' + turn });
+            rows.push({ type: 'tool', text: t.name + (t.argsSummary ? '  ' + t.argsSummary : ''), meta: '轮 ' + turn, ts: ts });
           });
         });
         (m.tools || []).forEach(function (t) {
-          rows.push({ type: 'tool', text: t.name + (t.argsSummary ? '  ' + t.argsSummary : ''), meta: '轮 ' + turn });
+          rows.push({ type: 'tool', text: t.name + (t.argsSummary ? '  ' + t.argsSummary : ''), meta: '轮 ' + turn, ts: ts });
         });
       }
       if (m.kind === 'tool' || m.kind === 'tool-result') {
-        rows.push({ type: 'tool', text: (m.text || '工具') + (m.argsSummary ? '  ' + m.argsSummary : '') });
+        rows.push({ type: 'tool', text: (m.text || '工具') + (m.argsSummary ? '  ' + m.argsSummary : ''), ts: ts });
       }
+      if (ts) lastTs = ts;
     });
     if (q) rows = rows.filter(function (r) { return String(r.text).toLowerCase().indexOf(q) > -1; });
     list.textContent = '';
@@ -1711,13 +1854,17 @@ svg { flex: none; }
       list.appendChild(e);
       return;
     }
-    rows.forEach(function (r) {
+    rows.forEach(function (r, i) {
       var row = document.createElement('div');
       row.className = 'traj-row ' + (r.type === 'tool' ? 'tool' : (r.type === 'user' ? 'asst' : 'asst'));
       var label = r.type === 'tool' ? 'TOOL' : (r.type === 'user' ? 'USER' : 'ASSISTANT');
+      // Duration：本条与下一条的时间差（对标 DSH 轨迹的 Duration 列）
+      var dur = '';
+      if (r.ts && i + 1 < rows.length && rows[i + 1].ts > r.ts) dur = fmtDur(rows[i + 1].ts - r.ts);
+      var meta = [r.meta, dur ? dur : ''].filter(Boolean).join(' · ');
       row.innerHTML = '<span class="tr-type">' + label + '</span>' +
         '<span class="tr-t">' + esc(r.text) + '</span>' +
-        (r.meta ? '<span class="tr-meta">' + esc(r.meta) + '</span>' : '');
+        (meta ? '<span class="tr-meta">' + esc(meta) + '</span>' : '');
       list.appendChild(row);
     });
   }
@@ -2225,6 +2372,14 @@ svg { flex: none; }
     if (!text) return;
     interrupt = !!interrupt;
     if (state.running) {
+      if (state.busyEnter === 'queue') {
+        // 排队发送：不打断当前任务，完成后自动补发
+        state.pendingQueue = state.pendingQueue || [];
+        state.pendingQueue.push(text);
+        input.value = '';
+        toast('已排队（' + state.pendingQueue.length + ' 条），任务完成后自动发送');
+        return;
+      }
       // 运行中发送 = 打断当前任务并插入新消息（DSH steer 语义）
       interrupt = true;
       toast('已打断当前任务，插入新消息…');
@@ -2242,6 +2397,8 @@ svg { flex: none; }
     state.msgs.push({ role: 'user', text: text, time: new Date().toISOString() });
     input.value = '';
     state.running = true;
+    stopLiveFollow();      // 本地发送：由 pollStream 消费事件，暂停 SSE 跟随避免双消费
+    state.liveMsg = null;
     updateRunUI();
     renderTimeline();
 
@@ -2301,6 +2458,10 @@ svg { flex: none; }
             toast('任务完成');
           }
           refreshSessions();
+          // 任务结束：恢复 SSE 实时跟随（从当前水位继续收外部事件）
+          state.followBase = state.streamBase || state.followBase;
+          startLiveFollow(sid, state.followBase);
+          drainQueue(); // queue 模式补发排队消息
         }).catch(function (e) {
           state.continuePending = false;
           if (state.streamTimer) { clearInterval(state.streamTimer); state.streamTimer = null; }
@@ -2333,6 +2494,16 @@ svg { flex: none; }
       renderTimeline();
       toast('发送失败：' + e.message, true);
     }
+  }
+
+  // queue 模式：任务完成后自动补发排队的消息
+  function drainQueue() {
+    if (state.running) return;
+    var q = state.pendingQueue || [];
+    if (!q.length) return;
+    var text = q.shift();
+    $('input').value = text;
+    sendMessage();
   }
 
   // 流式轮询（打字机效果 + 工具活动卡）
@@ -2460,8 +2631,154 @@ svg { flex: none; }
       toast('任务完成');
     }
     refreshSessions();
+    // 本地流式收尾后恢复 SSE 跟随（从当前水位继续）
+    state.followBase = state.streamBase || state.followBase;
+    startLiveFollow(state.currentSess && state.currentSess.sessionId, state.followBase);
+    drainQueue(); // queue 模式补发排队消息
   }
   function firstLine(s, n) { var t = String(s || '').split('\n')[0].trim(); return t.length > n ? t.slice(0, n) + '…' : t; }
+
+  // ============ 实时跟随（SSE 推送，对标 DSH events.mux：打开会话即长连接收事件） ============
+  function startLiveFollow(sid, afterSeq) {
+    stopLiveFollow();
+    if (!sid || !state.base || !state.token) return;
+    state.followBase = Math.max(state.followBase || 0, Number(afterSeq) || 0);
+    var ac = new AbortController();
+    state.followAbort = ac;
+    fetch(state.base.replace(/\/+$/, '') + '/api/events.stream?sessionId=' + enc(sid) + '&afterSeq=' + state.followBase, {
+      headers: { authorization: 'Bearer ' + state.token },
+      signal: ac.signal,
+    }).then(function (r) {
+      if (!r.ok || !r.body) throw new Error('stream ' + r.status);
+      var reader = r.body.getReader();
+      var dec = new TextDecoder();
+      var buf = '';
+      function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) return;
+          buf += dec.decode(res.value, { stream: true });
+          var idx;
+          while ((idx = buf.indexOf('\n\n')) >= 0) {
+            var raw = buf.slice(0, idx); buf = buf.slice(idx + 2);
+            raw.split('\n').forEach(function (line) {
+              if (line.indexOf('data: ') === 0) {
+                try { handleLiveEvent(JSON.parse(line.slice(6))); } catch (e) { /* 单帧解析失败跳过 */ }
+              }
+            });
+          }
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function () {
+      // 连接断开：若仍在看同一会话，退避重连
+      if (state.followAbort === ac) setTimeout(function () {
+        if (state.currentSess && state.currentSess.sessionId === sid) startLiveFollow(sid, state.followBase);
+      }, 3000);
+    });
+  }
+  function stopLiveFollow() {
+    if (state.followAbort) { try { state.followAbort.abort(); } catch (e) {} state.followAbort = null; }
+  }
+  // 实时事件 → 消息/统计（复用 pollStream 的累积规则；只处理当前会话的新事件）
+  function handleLiveEvent(ev) {
+    if (!ev || !ev.type) return;
+    if (typeof ev.seq === 'number') state.followBase = Math.max(state.followBase, ev.seq);
+    var type = ev.type || '';
+    var kind = ev.kind || '';
+    var lm = state.liveMsg;
+    // 用户消息：直接追加
+    if (type === 'user/message' && (kind === 'text' || ev.text)) {
+      state.msgs.push({ role: 'user', text: ev.text || '', time: new Date().toISOString() });
+      renderTimeline();
+      return;
+    }
+    // 步骤边界：新 step
+    if (kind === 'step-start' || type === 'step/start') {
+      if (!lm) { lm = newLiveMsg(); state.liveMsg = lm; state.msgs.push(lm); }
+      var ns = { idx: lm.steps.length, text: '', thinking: '', tools: null };
+      lm.steps.push(ns); lm._curStep = ns;
+      renderTimeline();
+      return;
+    }
+    // turn/end：结束当前实时消息
+    if (type === 'turn/end' || type === 'step/end') {
+      if (lm) { lm.streaming = false; }
+      state.liveMsg = null;
+      return;
+    }
+    if (!lm) {
+      // 首个增量（文本/工具/usage）自动开一条实时消息
+      lm = newLiveMsg(); state.liveMsg = lm; state.msgs.push(lm);
+    }
+    var cur = lm._curStep;
+    if (type === 'assistant/chunk' && kind === 'text') {
+      lm.text += ev.text || '';
+      if (cur) cur.text += ev.text || '';
+    } else if (type === 'assistant/chunk' && kind === 'thinking') {
+      lm.thinking = (lm.thinking || '') + (ev.text || '');
+      if (cur) cur.thinking = (cur.thinking || '') + (ev.text || '');
+      if (lm.thinking.length > 6000) lm.thinking = lm.thinking.slice(-6000);
+    } else if (type === 'assistant/message' && kind === 'text') {
+      lm.text = ev.text || lm.text;
+      if (cur) cur.text = ev.text || cur.text;
+    } else if (type === 'tool/call') {
+      lm.tools = lm.tools || [];
+      var tid = ev.callId || ('tc-' + lm.tools.length);
+      var ex = lm.tools.filter(function (t) { return t.callId === tid; });
+      if (ex.length) {
+        var e0 = ex[ex.length - 1];
+        if (!e0.argsSummary && ev.argsSummary) e0.argsSummary = ev.argsSummary;
+        if (!e0.arguments && ev.arguments) e0.arguments = ev.arguments;
+      } else {
+        lm.tools.push({ name: ev.text || '工具', callId: tid, argsSummary: ev.argsSummary, arguments: ev.arguments, running: true });
+      }
+      if (cur) {
+        cur.tools = cur.tools || [];
+        if (!cur.tools.some(function (t) { return t.callId === tid; })) {
+          cur.tools.push({ name: ev.text || '工具', callId: tid, argsSummary: ev.argsSummary, arguments: ev.arguments, running: true });
+        }
+      }
+    } else if (type === 'tool/result') {
+      lm.tools = lm.tools || [];
+      var rid = ev.callId;
+      if (rid) {
+        var hit = lm.tools.filter(function (t) { return t.callId === rid; });
+        if (hit.length) {
+          var h0 = hit[hit.length - 1];
+          h0.running = false; h0.result = ev.result; h0.isError = ev.isError;
+        } else {
+          lm.tools.push({ name: ev.text ? '工具结果' : '工具', callId: rid, result: ev.result, isError: ev.isError, running: false });
+        }
+        if (cur) {
+          cur.tools = cur.tools || [];
+          var ch = cur.tools.filter(function (t) { return t.callId === rid; });
+          if (ch.length) { ch[0].running = false; ch[0].result = ev.result; ch[0].isError = ev.isError; }
+        }
+      }
+    } else if (kind === 'usage' && ev.usage) {
+      state.taskStat.input += ev.usage.input || 0;
+      state.taskStat.output += ev.usage.output || 0;
+      state.taskStat.cacheRead += ev.usage.cacheRead || 0;
+    } else {
+      return; // 不相关事件不重渲染
+    }
+    // 节流渲染：事件可能每秒上百个，全量重绘最多 4 次/秒
+    if (!state.liveRenderT) {
+      state.liveRenderT = setTimeout(function () { state.liveRenderT = null; renderTimeline(); }, 250);
+    }
+  }
+  function newLiveMsg() {
+    return { role: 'asst', kind: 'asst', text: '', time: new Date().toISOString(), streaming: true, steps: [], _curStep: null, _live: true };
+  }
+  // 会话状态周期刷新（轮/步/耗时/权限/todos）：打开会话即启动，不依赖本地是否发消息
+  function startStatusTimer() {
+    stopStatusTimer();
+    state.statusTimer = setInterval(function () { refreshStatLive(); }, 6000);
+  }
+  function stopStatusTimer() {
+    if (state.statusTimer) { clearInterval(state.statusTimer); state.statusTimer = null; }
+  }
 
   // ============ 审批（codex-relay approvalRequest 卡） ============
   function startApprovalPoll() {
@@ -3000,6 +3317,102 @@ svg { flex: none; }
     }
   }
 
+  // ============ DSH 设置（对标 DSH 桌面设置面板：Enter行为/语言/权限默认/提供方） ============
+  var dshSettings = null;
+  function segSet(el, v) {
+    if (!el) return;
+    el.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === v); });
+  }
+  async function loadDshSettings() {
+    if (!state.base || !state.token) return;
+    try {
+      var d = await api('/api/dsh-settings', { timeoutMs: 8000 });
+      if (!d || !d.ok || !d.namespaces) return;
+      dshSettings = d;
+      var find = function (ns) { var n = d.namespaces.find(function (x) { return x.ns === ns; }); return n && n.value ? n.value : {}; };
+      var uc = find('ui-conversation');
+      var loc = find('locale');
+      var perm = find('permission');
+      // 繁忙时 Enter：DSH 设置优先，其次本地记忆
+      var be = uc.busyEnter || state.busyEnter || 'steer';
+      state.busyEnter = be;
+      segSet($('segBusyEnter'), be);
+      segSet($('segLocale'), loc.preference || 'zh');
+      segSet($('segPermDefault'), perm.defaultPreset || 'workspace-write');
+      renderProviders(find('llm-pi-ai'));
+    } catch (e) { /* 设置接口不可用则保持默认 */ }
+  }
+  async function mutateSetting(ns, ops) {
+    try {
+      var d = await api('/api/dsh-settings', { method: 'POST', body: JSON.stringify({ ns: ns, ops: ops, expectedRevision: 0 }), timeoutMs: 10000 });
+      if (d && d.ok) return true;
+      toast((d && d.error) || '设置保存失败', true);
+      return false;
+    } catch (e) { toast('设置保存失败：' + e.message, true); return false; }
+  }
+  // 提供方列表
+  function renderProviders(llm) {
+    var box = $('providerList');
+    if (!box) return;
+    box.textContent = '';
+    var provs = (llm && llm.providers) || {};
+    var keys = Object.keys(provs);
+    if (!keys.length) {
+      var e = document.createElement('div');
+      e.className = 'provider-empty';
+      e.textContent = '暂无提供方，点下方添加';
+      box.appendChild(e);
+      return;
+    }
+    keys.forEach(function (id) {
+      var p = provs[id] || {};
+      var it = document.createElement('div');
+      it.className = 'provider-item';
+      var models = Array.isArray(p.models) ? p.models.map(function (m) { return m.id || m; }).join(', ') : '';
+      it.innerHTML =
+        '<div class="pi-main"><div class="pi-t">' + esc(id) + '</div>' +
+        '<div class="pi-s">' + esc([p.apiKeyEnv || '', p.baseURL || '', models].filter(Boolean).join(' · ')) + '</div></div>' +
+        '<button class="pi-act" title="编辑">' + penSvg() + '</button>' +
+        '<button class="pi-act del" title="删除">' + trashSvg() + '</button>';
+      it.querySelector('.pi-act:not(.del)').addEventListener('click', function () { openProviderSheet(id, p); });
+      it.querySelector('.pi-act.del').addEventListener('click', function () { deleteProvider(id); });
+      box.appendChild(it);
+    });
+  }
+  var provEditing = null;
+  function openProviderSheet(id, p) {
+    provEditing = id || null;
+    $('provTitle').textContent = id ? ('编辑 ' + id) : '添加提供方';
+    $('provId').value = id || '';
+    $('provKeyEnv').value = (p && p.apiKeyEnv) || '';
+    $('provBase').value = (p && p.baseURL) || '';
+    var models = (p && Array.isArray(p.models)) ? p.models.map(function (m) { return m.id || m; }).join(', ') : '';
+    $('provModels').value = models;
+    $('provMask').classList.remove('hidden');
+    $('provId').focus();
+  }
+  async function saveProvider() {
+    var id = $('provId').value.trim();
+    if (!id) { toast('提供方 ID 必填', true); return; }
+    var profile = {};
+    var ke = $('provKeyEnv').value.trim();
+    if (ke) profile.apiKeyEnv = ke;
+    var bu = $('provBase').value.trim();
+    if (bu) profile.baseURL = bu;
+    var ms = $('provModels').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (ms.length) profile.models = ms.map(function (m) { return { id: m, name: m }; });
+    var ok = await mutateSetting('llm-pi-ai', [{ op: 'set', path: ['providers', id], value: profile }]);
+    if (ok) {
+      toast('已保存提供方');
+      $('provMask').classList.add('hidden');
+      loadDshSettings();
+    }
+  }
+  async function deleteProvider(id) {
+    if (!confirm('删除提供方 "' + id + '"？')) return;
+    var ok = await mutateSetting('llm-pi-ai', [{ op: 'unset', path: ['providers', id] }]);
+    if (ok) { toast('已删除'); loadDshSettings(); }
+  }
   function renderSettings() {
     $('setServer').textContent = state.base || '-';
     $('setConn').textContent = $('connLabel').textContent;
@@ -3023,6 +3436,8 @@ svg { flex: none; }
         b.classList.toggle('on', b.dataset.theme === state.theme);
       });
     }
+    // 加载 DSH 设置（Enter行为/语言/权限默认/提供方）填充分段控件
+    loadDshSettings();
   }
   // 应用主题（dark/light/system → data-theme）
   function applyTheme() {
@@ -3094,6 +3509,38 @@ svg { flex: none; }
     $('agentsBack').addEventListener('click', function () { showPane('paneChat'); });
     $('agentsRefresh').addEventListener('click', loadAgents);
     $('settingsBtn').addEventListener('click', function () { closeDrawer(); renderSettings(); showPane('paneSettings'); });
+    // DSH 设置：分段控件（Enter行为/语言/权限默认）
+    $('segBusyEnter').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('button[data-v]') : null;
+      if (!b) return;
+      var v = b.dataset.v;
+      state.busyEnter = v; save('busyEnter', v);
+      segSet($('segBusyEnter'), v);
+      mutateSetting('ui-conversation', [{ op: 'set', path: ['busyEnter'], value: v }]).then(function (ok) {
+        toast(ok ? (v === 'queue' ? '已设为排队发送' : '已设为插话发送') : '');
+      });
+    });
+    $('segLocale').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('button[data-v]') : null;
+      if (!b) return;
+      segSet($('segLocale'), b.dataset.v);
+      mutateSetting('locale', [{ op: 'set', path: ['preference'], value: b.dataset.v }]).then(function (ok) {
+        if (ok) toast('已设置语言（电脑端 DSH 生效）');
+      });
+    });
+    $('segPermDefault').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('button[data-v]') : null;
+      if (!b) return;
+      segSet($('segPermDefault'), b.dataset.v);
+      mutateSetting('permission', [{ op: 'set', path: ['defaultPreset'], value: b.dataset.v }]).then(function (ok) {
+        if (ok) toast('已设置新会话默认权限');
+      });
+    });
+    // 提供方管理
+    $('providerAddBtn').addEventListener('click', function () { openProviderSheet(null, null); });
+    $('provClose').addEventListener('click', function () { $('provMask').classList.add('hidden'); });
+    $('provMask').addEventListener('click', function (e) { if (e.target === $('provMask')) $('provMask').classList.add('hidden'); });
+    $('provSaveBtn').addEventListener('click', saveProvider);
     // 设置页“打开配置文件”：读取电脑端 DSH settings.yaml 路径并在编辑器中打开
     $('setOpenCfg').addEventListener('click', async function () {
       try {
@@ -3128,6 +3575,7 @@ svg { flex: none; }
       state.currentSess = null;
       state.msgs = [];
       state.taskStat = { input: 0, output: 0, cacheRead: 0 }; // 新会话清空统计，空状态不显示旧会话数据
+      stopLiveFollow(); stopStatusTimer(); state.liveMsg = null; // 停止实时跟随
       var ts2 = $('trajSearch'); if (ts2) ts2.value = '';
       $('chatTitle').textContent = '新对话';
       $('chatSub').textContent = state.currentWs.path || '';
@@ -3155,6 +3603,14 @@ svg { flex: none; }
     $('permPill').addEventListener('click', openPermSheet);
     $('permClose').addEventListener('click', function () { $('permMask').classList.add('hidden'); });
     $('permMask').addEventListener('click', function (e) { if (e.target === $('permMask')) $('permMask').classList.add('hidden'); });
+    // 会话操作面板
+    $('sessClose').addEventListener('click', closeSessSheet);
+    $('sessMask').addEventListener('click', function (e) { if (e.target === $('sessMask')) closeSessSheet(); });
+    $('sessForkBtn').addEventListener('click', function () { var s = sessSheetTarget; closeSessSheet(); if (s) forkSession(s); });
+    $('sessRenameBtn').addEventListener('click', function () { var s = sessSheetTarget; closeSessSheet(); if (s) renameSession(s); });
+    $('sessDelBtn').addEventListener('click', function () { var s = sessSheetTarget; closeSessSheet(); if (s) deleteSession(s); });
+    // 任务清单：头部点击收起 / 展开
+    $('todoHead').addEventListener('click', function () { $('todoPanel').classList.toggle('collapsed'); });
     // 图片附件
     $('addBtn').addEventListener('click', function () { $('fileInput').click(); });
     $('fileInput').addEventListener('change', async function () {

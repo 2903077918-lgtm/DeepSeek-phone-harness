@@ -530,6 +530,44 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
       }
     },
     // GET /api/dsh-models?sessionId=：转发 session.models（当前模型 + 可选模型分组）
+    // GET /api/dsh-settings：settings.describe（读取 DSH 设置树，返回关键命名空间）
+    async describeSettings() {
+      try {
+        const value = await fetchRpc('settings.describe', {});
+        const namespaces = (value && value.namespaces) || [];
+        const pick = ['ui-conversation', 'locale', 'permission', 'ui-theme', 'llm-pi-ai', 'agent-default-model'];
+        const slim = namespaces.filter((n) => pick.includes(n.ns)).map((n) => ({ ns: n.ns, value: n.value || {}, user: n.user || null, revision: n.revision }));
+        return { ok: true, writable: !!(value && value.writable), namespaces: slim };
+      } catch (e) {
+        return { ok: false, code: 'backend-unavailable', error: 'settings.describe 失败: ' + String(e) };
+      }
+    },
+    // POST /api/dsh-settings {ns, ops, expectedRevision}：settings.mutate（写设置，对标 DSH 桌面设置面板）
+    async mutateSettings({ ns, ops, expectedRevision } = {}) {
+      const n = String(ns || '').trim();
+      if (!n) return { ok: false, code: 'bad-request', error: 'ns 必填' };
+      if (!Array.isArray(ops) || !ops.length) return { ok: false, code: 'bad-request', error: 'ops 必填' };
+      const doMutate = async (rev) => fetchRpc('settings.mutate', { ns: n, ops, expectedRevision: Number(rev) || 0 });
+      try {
+        const value = await doMutate(expectedRevision);
+        return { ok: true, ns: value && value.ns, result: value };
+      } catch (e) {
+        // settings-conflict：revision 过期（被其他端改过）→ 重新读取后带新 revision 重试一次
+        const msg = String(e);
+        if (msg.includes('settings-conflict') || msg.includes('changed since it was read')) {
+          try {
+            const desc = await fetchRpc('settings.describe', {});
+            const nsInfo = ((desc && desc.namespaces) || []).find((x) => x.ns === n);
+            const rev = nsInfo && typeof nsInfo.revision === 'number' ? nsInfo.revision : 0;
+            const value2 = await doMutate(rev);
+            return { ok: true, ns: value2 && value2.ns, result: value2, retried: true };
+          } catch (e2) {
+            return { ok: false, code: 'backend-unavailable', error: 'settings.mutate 失败: ' + String(e2) };
+          }
+        }
+        return { ok: false, code: 'backend-unavailable', error: 'settings.mutate 失败: ' + msg };
+      }
+    },
     async getSessionModels(sessionId) {
       const sid = String(sessionId || '').trim();
       if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };

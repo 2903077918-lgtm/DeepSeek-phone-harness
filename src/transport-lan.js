@@ -370,6 +370,46 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         sendJson(res, 200, { ok: true, ...out });
         return;
       }
+      // ---- 实时推送（SSE，对标 DSH events.mux 推送思路）：手机保持长连接，事件到达即推，替代 800ms 轮询 ----
+      // GET /api/events.stream?sessionId=&afterSeq=  →  text/event-stream（data: 每事件一行 JSON；15s 心跳）
+      if (req.method === 'GET' && url.pathname === '/api/events.stream') {
+        if (!auth(req, res)) return;
+        const sessionId = (url.searchParams.get('sessionId') || '').trim();
+        if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
+        const afterSeq = Number(url.searchParams.get('afterSeq') || '0');
+        let after = Number.isFinite(afterSeq) && afterSeq > 0 ? afterSeq : 0;
+        res.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache',
+          'connection': 'keep-alive',
+          'x-accel-buffering': 'no',
+        });
+        res.write('retry: 2000\n\n');
+        let closed = false;
+        req.on('close', () => { closed = true; });
+        const heartbeat = setInterval(() => { if (!closed) res.write(': ping\n\n'); }, 15000);
+        (async () => {
+          try {
+            while (!closed) {
+              const out = await executor.getEvents(sessionId, after);
+              if (out && out.items && out.items.length) {
+                after = typeof out.lastSeq === 'number' ? out.lastSeq : after;
+                for (const it of out.items) {
+                  if (closed) break;
+                  res.write('data: ' + JSON.stringify(it) + '\n\n');
+                }
+              }
+              if (!closed) await new Promise((r) => setTimeout(r, 250));
+            }
+          } catch (e) {
+            if (!closed) res.write('event: error\ndata: ' + JSON.stringify({ message: String(e) }) + '\n\n');
+          } finally {
+            clearInterval(heartbeat);
+            if (!closed) res.end();
+          }
+        })();
+        return;
+      }
       // ---- 中断正在运行的会话任务（转发 DSH session.cancel）----
       if (req.method === 'POST' && url.pathname === '/api/cancel') {
         if (!auth(req, res)) return;
@@ -530,6 +570,34 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
           return;
         }
         sendJson(res, 200, { ok: true, selected: out.selected });
+        return;
+      }
+      // ---- DSH 设置（对标 DSH 桌面设置面板）----
+      // GET /api/dsh-settings → settings.describe（关键命名空间）
+      if (req.method === 'GET' && url.pathname === '/api/dsh-settings') {
+        if (!auth(req, res)) return;
+        if (typeof executor.describeSettings !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        try {
+          const out = await executor.describeSettings();
+          if (!out.ok) { sendJson(res, 502, { ok: false, error: out.error }); return; }
+          sendJson(res, 200, { ok: true, writable: out.writable, namespaces: out.namespaces });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: String(e) });
+        }
+        return;
+      }
+      // POST /api/dsh-settings {ns, ops, expectedRevision} → settings.mutate
+      if (req.method === 'POST' && url.pathname === '/api/dsh-settings') {
+        if (!auth(req, res)) return;
+        if (typeof executor.mutateSettings !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const body = await readBody(req);
+        const out = await executor.mutateSettings({ ns: body.ns, ops: body.ops, expectedRevision: body.expectedRevision });
+        if (!out.ok) {
+          const code = out.code === 'bad-request' ? 400 : 502;
+          sendJson(res, code, { ok: false, error: out.error });
+          return;
+        }
+        sendJson(res, 200, { ok: true, ns: out.ns, result: out.result });
         return;
       }
       // ---- Agent 预设（模式切换：标准/PTC/极简/创造）----
