@@ -428,6 +428,13 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); }
         return;
       }
+      // DSH 配置文件路径（设置页“打开配置文件”用）：GET /api/dsh-config
+      if (req.method === 'GET' && url.pathname === '/api/dsh-config') {
+        if (!auth(req, res)) return;
+        const cfg = path.join(os.homedir(), '.dsh', 'settings.yaml');
+        sendJson(res, 200, { ok: true, path: cfg.replace(/\\/g, '/') });
+        return;
+      }
       // ---- 图片 OCR → Markdown（Windows 自带 OCR：免费、本地、不耗 token）----
       // POST /api/ocr {imageBase64, ext?} → {ok, text}  文本按行返回，前端可整理为 markdown
       if (req.method === 'POST' && url.pathname === '/api/ocr') {

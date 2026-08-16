@@ -35,20 +35,20 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 }
-/* 浅色主题（对标 DSH 浅色外观） */
+/* 浅色主题（对标 DSH 桌面端浅色外观：bg ~#F3F3F3、强调蓝 #4070E0） */
 [data-theme="light"] {
-  --bg: #F5F6F8;
+  --bg: #F3F4F6;
   --bg-el: #FFFFFF;
-  --bg-sel: #E9ECF1;
-  --bg-drawer: #EDEFF3;
-  --border: rgba(31, 42, 68, 0.12);
-  --border-strong: rgba(31, 42, 68, 0.2);
-  --text: #1A2130;
-  --text-2: #5A6472;
-  --text-3: #8B93A1;
-  --blue: #2563EB;
-  --blue-2: #3B82F6;
-  --blue-soft: rgba(59, 130, 246, 0.12);
+  --bg-sel: #EAECF0;
+  --bg-drawer: #EDEEF2;
+  --border: rgba(31, 42, 68, 0.10);
+  --border-strong: rgba(31, 42, 68, 0.18);
+  --text: #16181D;
+  --text-2: #5B6270;
+  --text-3: #8A92A3;
+  --blue: #4070E0;
+  --blue-2: #5B84EA;
+  --blue-soft: rgba(64, 112, 224, 0.10);
   --green: #16A34A;
   --green-soft: rgba(22, 163, 74, 0.12);
   --red: #DC2626;
@@ -57,18 +57,18 @@
 }
 @media (prefers-color-scheme: light) {
   [data-theme="system"] {
-    --bg: #F5F6F8;
+    --bg: #F3F4F6;
     --bg-el: #FFFFFF;
-    --bg-sel: #E9ECF1;
-    --bg-drawer: #EDEFF3;
-    --border: rgba(31, 42, 68, 0.12);
-    --border-strong: rgba(31, 42, 68, 0.2);
-    --text: #1A2130;
-    --text-2: #5A6472;
-    --text-3: #8B93A1;
-    --blue: #2563EB;
-    --blue-2: #3B82F6;
-    --blue-soft: rgba(59, 130, 246, 0.12);
+    --bg-sel: #EAECF0;
+    --bg-drawer: #EDEEF2;
+    --border: rgba(31, 42, 68, 0.10);
+    --border-strong: rgba(31, 42, 68, 0.18);
+    --text: #16181D;
+    --text-2: #5B6270;
+    --text-3: #8A92A3;
+    --blue: #4070E0;
+    --blue-2: #5B84EA;
+    --blue-soft: rgba(64, 112, 224, 0.10);
     --green: #16A34A;
     --green-soft: rgba(22, 163, 74, 0.12);
     --gold: #B7791F;
@@ -145,6 +145,49 @@ svg { flex: none; }
 }
 .drawer-search input { flex: 1; min-width: 0; background: none; border: none; color: var(--text); font-size: 13px; outline: none; }
 .drawer-search input::placeholder { color: var(--text-3); }
+
+/* ============ DSH 桌面侧栏风格（新会话 / 工作区 / 会话 / 设置） ============ */
+.drawer-head { display: block; padding: calc(var(--safe-top) + 12px) 12px 10px; }
+.new-chat {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  width: 100%; padding: 11px 12px; border-radius: 10px;
+  background: var(--blue); color: #fff; font-size: 14px; font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.10);
+  transition: opacity 0.15s, transform 0.08s;
+}
+.new-chat:active { transform: scale(0.98); opacity: 0.92; }
+.drawer-ws { padding: 2px 10px 6px; }
+.sec-label { font-size: 11px; font-weight: 700; color: var(--text-3); letter-spacing: 0.6px; padding: 6px 8px 6px; }
+.drawer-ws .sec-label { padding-top: 0; }
+.ws-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border-radius: 9px; text-align: left;
+  background: var(--bg-el); border: 1px solid var(--border);
+  color: var(--text); font-size: 13px; transition: background 0.1s;
+}
+.ws-row:hover { background: var(--bg-sel); }
+.ws-row .ws-ic { color: var(--blue-2); display: grid; place-items: center; flex: none; }
+.ws-row .ws-main { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.ws-row .ws-chev { color: var(--text-3); flex: none; }
+.drawer-item .time { flex: none; font-size: 10.5px; color: var(--text-3); margin-left: 4px; }
+.drawer-item .main { display: flex; flex-direction: column; }
+.drawer-expand {
+  width: 100%; text-align: left; padding: 9px 12px; margin-top: 2px;
+  font-size: 12.5px; color: var(--blue-2); border-radius: 9px;
+}
+.drawer-expand:hover { background: var(--blue-soft); }
+.drawer-more { margin-bottom: 4px; }
+.more-summary {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+  border-radius: 9px; color: var(--text-2); font-size: 13px;
+  list-style: none; cursor: pointer; user-select: none;
+}
+.more-summary::-webkit-details-marker { display: none; }
+.more-summary:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+.more-summary svg { color: var(--text-3); }
+.more-grid { padding: 2px 0 6px 24px; }
+.drawer-foot { padding: 8px 10px calc(8px + var(--safe-bottom)); }
+.drawer-foot .item.settings-row { font-weight: 600; }
 
 /* 遮罩（手机抽屉） */
 .scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.28); z-index: 35; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
@@ -250,6 +293,42 @@ svg { flex: none; }
 .chat-head .info { flex: 1; min-width: 0; }
 .chat-head .t { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-head .s { font-size: 11.5px; color: var(--text-2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 对话 / 轨迹切换 */
+.traj-toggle {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  font-size: 12px; color: var(--text-2); padding: 6px 11px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--bg-el);
+  white-space: nowrap; transition: all 0.15s;
+}
+.traj-toggle.on { color: var(--blue-2); border-color: var(--blue); background: var(--blue-soft); }
+/* 轨迹面板（ASSISTANT / TOOL 时间线） */
+.traj-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; border-bottom: 1px solid var(--border); }
+.traj-search {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  margin: 8px 12px 0; padding: 8px 12px;
+  background: var(--bg-el); border: 1px solid var(--border);
+  border-radius: 9px; color: var(--text-2);
+}
+.traj-search input { flex: 1; min-width: 0; background: none; border: none; color: var(--text); font-size: 13px; outline: none; }
+.traj-search input::placeholder { color: var(--text-3); }
+.traj-count { flex: none; font-size: 10.5px; color: var(--text-3); }
+.traj-list { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 12px 12px; }
+.traj-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 6px 8px; border-radius: 8px; font-size: 12px; line-height: 1.5;
+}
+.traj-row:hover { background: var(--bg-sel); }
+.traj-row .tr-type {
+  flex: none; width: 58px; padding: 2px 0; text-align: center;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.5px; border-radius: 6px;
+  border: 1px solid var(--border-strong); color: var(--text-2);
+}
+.traj-row.asst .tr-type { color: var(--blue-2); border-color: var(--blue); background: var(--blue-soft); }
+.traj-row.tool .tr-type { color: var(--green); border-color: rgba(22,163,74,0.4); background: var(--green-soft); }
+.traj-row .tr-t { flex: 1; min-width: 0; color: var(--text); word-break: break-all; }
+.traj-row .tr-t .tr-name { color: var(--text-2); }
+.traj-row .tr-meta { flex: none; font-size: 10px; color: var(--text-3); font-family: var(--mono); }
+.traj-empty { text-align: center; color: var(--text-3); font-size: 12px; padding: 30px 10px; }
 
 /* 连接横幅（codex-relay ConnectionBanner） */
 .conn-banner {
@@ -427,11 +506,22 @@ svg { flex: none; }
 .task-body .btn { min-height: 32px; font-size: 12px; padding: 0 12px; }
 .empty-state { text-align: center; color: var(--text-2); padding: 60px 24px; font-size: 13.5px; line-height: 1.9; }
 .empty-state .big { font-size: 15px; font-weight: 600; color: var(--text); }
+/* DSH 桌面空状态：探索未至之境 */
+.empty-state.dsh-empty { padding: 76px 24px; }
+.dsh-empty .dsh-empty-badge {
+  display: inline-block; font-size: 10.5px; letter-spacing: 0.5px;
+  color: var(--blue-2); border: 1px solid var(--border-strong);
+  background: var(--bg-el); border-radius: 999px; padding: 3px 11px; margin-bottom: 20px;
+}
+.dsh-empty .big { font-size: 25px; font-weight: 800; letter-spacing: 0.5px; }
+.dsh-empty .sub { margin-top: 10px; font-size: 14px; color: var(--text-2); }
+.dsh-empty .empty-chips { display: flex; justify-content: center; gap: 8px; margin-top: 28px; flex-wrap: wrap; }
+.dsh-empty .empty-chips .chip { font-size: 12px; padding: 6px 12px; }
 
 /* composer */
 .inputbar { border-top: 1px solid var(--border); background: var(--bg); padding: 8px 12px calc(var(--safe-bottom) + 8px); flex: none; }
-/* 对话页底部统计条（最下方：token 用量 / 缓存命中） */
-.chat-stat { flex: none; display: flex; align-items: center; gap: 10px; padding: 5px 14px calc(2px + env(safe-area-inset-bottom, 0px)); font-size: 10.5px; color: var(--text-3); background: var(--bg); border-top: 1px solid var(--border); overflow-x: auto; white-space: nowrap; }
+/* 对话页底部统计条（对标 DSH：轮/步 · LLM/工具耗时 · 模型 · 首token/速度/缓存） */
+.chat-stat { flex: none; display: flex; align-items: center; gap: 12px; padding: 4px 14px calc(3px + env(safe-area-inset-bottom, 0px)); font-size: 10px; color: var(--text-3); background: var(--bg-el); border-top: 1px solid var(--border); overflow-x: auto; white-space: nowrap; font-family: var(--mono); }
 .chat-stat .st-item { display: inline-flex; align-items: center; gap: 4px; }
 .chat-stat .st-ic { display: inline-grid; place-items: center; color: var(--text-3); }
 .chat-stat .st-cache { color: var(--gold); }
@@ -548,6 +638,7 @@ svg { flex: none; }
 .set-btn { cursor: pointer; color: var(--text); }
 .set-btn:hover { background: rgba(255,255,255,0.04); }
 .set-btn.danger .set-t { color: var(--red); }
+.set-val { flex: none; font-size: 12.5px; font-weight: 600; color: var(--blue-2); }
 
 /* ============ 文件浏览 ============ */
 .file-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 12px; border-radius: 9px; text-align: left; }
@@ -561,6 +652,56 @@ svg { flex: none; }
 .editor-wrap { flex: 1; min-height: 0; overflow: auto; background: #0D1117; padding: 14px; }
 .editor-pre { font-family: var(--mono); font-size: 12.5px; line-height: 1.6; color: #D7E0EA; white-space: pre-wrap; word-break: break-word; margin: 0; }
 
+/* ============ 浅色（DSH 桌面）表面对齐 ============ */
+:root[data-theme="light"] .drawer { border-right-color: var(--border); }
+:root[data-theme="light"] .drawer-foot { border-top-color: var(--border); }
+:root[data-theme="light"] .drawer-search { background: var(--bg-el); }
+:root[data-theme="light"] .drawer-item:hover,
+:root[data-theme="light"] .drawer-foot .item:hover,
+:root[data-theme="light"] .file-item:hover,
+:root[data-theme="light"] .more-summary:hover { background: var(--bg-sel); color: var(--text); }
+:root[data-theme="light"] .drawer-item.active { background: var(--blue-soft); }
+:root[data-theme="light"] .list-item .ic,
+:root[data-theme="light"] .ws-item .ic { background: var(--bg-sel); }
+:root[data-theme="light"] .list-item .badge,
+:root[data-theme="light"] .ws-item .badge { background: var(--bg-sel); }
+:root[data-theme="light"] .msg.user .bubble { background: var(--blue); border-color: transparent; color: #fff; }
+:root[data-theme="light"] .msg.asst .bubble { background: #fff; }
+:root[data-theme="light"] .asst-body code { color: var(--text); background: var(--bg-sel); border-color: var(--border); }
+:root[data-theme="light"] .tool-line { background: var(--bg-el); }
+:root[data-theme="light"] .tool-card,
+:root[data-theme="light"] .step-card { background: #fff; }
+:root[data-theme="light"] .step-card .step-head { background: var(--bg); }
+:root[data-theme="light"] .tool-card .tc-detail pre { background: var(--bg); }
+:root[data-theme="light"] .editor-wrap { background: #fff; }
+:root[data-theme="light"] .editor-pre { color: var(--text); }
+:root[data-theme="light"] .set-row { border-bottom-color: var(--border); }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .drawer { border-right-color: var(--border); }
+  :root[data-theme="system"] .drawer-foot { border-top-color: var(--border); }
+  :root[data-theme="system"] .drawer-search { background: var(--bg-el); }
+  :root[data-theme="system"] .drawer-item:hover,
+  :root[data-theme="system"] .drawer-foot .item:hover,
+  :root[data-theme="system"] .file-item:hover,
+  :root[data-theme="system"] .more-summary:hover { background: var(--bg-sel); color: var(--text); }
+  :root[data-theme="system"] .drawer-item.active { background: var(--blue-soft); }
+  :root[data-theme="system"] .list-item .ic,
+  :root[data-theme="system"] .ws-item .ic { background: var(--bg-sel); }
+  :root[data-theme="system"] .list-item .badge,
+  :root[data-theme="system"] .ws-item .badge { background: var(--bg-sel); }
+  :root[data-theme="system"] .msg.user .bubble { background: var(--blue); border-color: transparent; color: #fff; }
+  :root[data-theme="system"] .msg.asst .bubble { background: #fff; }
+  :root[data-theme="system"] .asst-body code { color: var(--text); background: var(--bg-sel); border-color: var(--border); }
+  :root[data-theme="system"] .tool-line { background: var(--bg-el); }
+  :root[data-theme="system"] .tool-card,
+  :root[data-theme="system"] .step-card { background: #fff; }
+  :root[data-theme="system"] .step-card .step-head { background: var(--bg); }
+  :root[data-theme="system"] .tool-card .tc-detail pre { background: var(--bg); }
+  :root[data-theme="system"] .editor-wrap { background: #fff; }
+  :root[data-theme="system"] .editor-pre { color: var(--text); }
+  :root[data-theme="system"] .set-row { border-bottom-color: var(--border); }
+}
+
 /* 桌面宽屏：侧栏常驻 */
 @media (min-width: 900px) {
   .drawer { position: static; transform: none; width: 320px; }
@@ -570,54 +711,66 @@ svg { flex: none; }
 </head>
 <body>
 <div class="shell">
-  <!-- 抽屉（会话列表） -->
+  <!-- 抽屉（对标 DSH 桌面侧栏：新会话 / 工作区 / 会话 / 设置） -->
   <div class="scrim" id="scrim"></div>
   <aside class="drawer" id="drawer">
     <div class="drawer-head">
-      <span class="title">会话</span>
-      <button class="icon-btn" id="newChatBtn" type="button" aria-label="新建对话" title="新建对话">
-        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <button class="new-chat" id="newChatBtn" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>新会话</span>
       </button>
     </div>
-    <div class="drawer-list" id="drawerList"></div>
     <div class="drawer-search">
       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="sessSearch" type="search" placeholder="搜索会话" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
     </div>
+    <div class="drawer-ws">
+      <div class="sec-label">工作区</div>
+      <button class="ws-row" id="wsBtn" type="button" title="切换工作区">
+        <svg class="ws-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        <span class="ws-main" id="wsBtnLabel">选择工作区</span>
+        <svg class="ws-chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+    <div class="drawer-list" id="drawerList"></div>
     <div class="drawer-foot">
-      <button class="item" id="wsBtn" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-        <span id="wsBtnLabel">选择工作区</span>
-      </button>
-      <button class="item" id="filesBtn" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span>文件</span>
-      </button>
-      <button class="item" id="termBtn" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-        <span>终端</span>
-      </button>
-      <button class="item" id="tasksBtn" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-        <span>任务</span>
-      </button>
-      <button class="item" id="goalBtn" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
-        <span>目标</span>
-      </button>
-      <button class="item" id="skillBtn" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-        <span>技能</span>
-      </button>
-      <button class="item" id="agentsBtn" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M1 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/><path d="M17 8a4 4 0 0 1 0 8"/></svg>
-        <span>子代理</span>
-      </button>
-      <button class="item" id="connBtn" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M21 8a9 9 0 1 0 1 6"/></svg>
-        <span>连接设置</span>
-      </button>
-      <button class="item" id="settingsBtn" type="button">
+      <details class="drawer-more">
+        <summary class="more-summary">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span>更多功能</span>
+        </summary>
+        <div class="more-grid">
+          <button class="item" id="filesBtn" type="button">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>文件</span>
+          </button>
+          <button class="item" id="termBtn" type="button">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <span>终端</span>
+          </button>
+          <button class="item" id="tasksBtn" type="button">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            <span>任务</span>
+          </button>
+          <button class="item" id="goalBtn" type="button">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
+            <span>目标</span>
+          </button>
+          <button class="item" id="skillBtn" type="button">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <span>技能</span>
+          </button>
+          <button class="item" id="agentsBtn" type="button">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M1 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/><path d="M17 8a4 4 0 0 1 0 8"/></svg>
+            <span>子代理</span>
+          </button>
+          <button class="item" id="connBtn" type="button">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M21 8a9 9 0 1 0 1 6"/></svg>
+            <span>连接设置</span>
+          </button>
+        </div>
+      </details>
+      <button class="item settings-row" id="settingsBtn" type="button">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         <span>设置</span>
       </button>
@@ -700,7 +853,20 @@ svg { flex: none; }
     <div class="pane hidden" id="paneChat">
       <div class="chat-head">
         <div class="info"><div class="t" id="chatTitle">对话</div><div class="s" id="chatSub"></div></div>
+        <button class="traj-toggle" id="trajToggle" type="button" title="对话 / 轨迹">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span id="trajToggleLabel">轨迹</span>
+        </button>
         <button class="btn ghost sm" id="wsSwitchBtn" type="button">切换工作区</button>
+      </div>
+      <!-- 轨迹面板（对标 DSH 桌面“对话 / 轨迹”切换：ASSISTANT/TOOL 时间线 + 搜索） -->
+      <div class="traj-panel hidden" id="trajPanel">
+        <div class="traj-search">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="trajSearch" type="search" placeholder="搜索轨迹" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <span class="traj-count" id="trajCount"></span>
+        </div>
+        <div class="traj-list" id="trajList"></div>
       </div>
       <div class="conn-banner hidden" id="connBanner">
         <span class="conn-banner-dot" id="connBannerDot"></span>
@@ -872,7 +1038,56 @@ svg { flex: none; }
         <div class="info"><div class="t">设置</div></div>
       </div>
       <div class="scroll">
-        <div class="sec-title"><span>设置</span></div>
+        <div class="sec-title"><span>通用设置</span></div>
+        <div class="settings-card">
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">权限</div><div class="set-s">选择新会话的默认权限模式</div></div>
+            <span class="set-val" id="setPerm">—</span>
+          </div>
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">外观</div><div class="set-s">界面颜色</div></div>
+          </div>
+          <div class="set-row">
+            <div class="theme-opts" id="themeOpts">
+              <button type="button" data-theme="dark">深色</button>
+              <button type="button" data-theme="light">浅色</button>
+              <button type="button" data-theme="system">跟随系统</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">繁忙时 Enter 键行为</div><div class="set-s">智能体运行时按 Enter</div></div>
+            <span class="set-val">发送</span>
+          </div>
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">语言</div><div class="set-s">界面语言</div></div>
+            <span class="set-val">中文</span>
+          </div>
+          <button class="set-row set-btn" id="setOpenCfg" type="button">
+            <div class="set-l"><div class="set-t">打开配置文件</div><div class="set-s">在电脑端打开 DSH 配置文件</div></div>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+        <div class="sec-title" style="margin-top:18px"><span>模型</span></div>
+        <div class="settings-card">
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">当前模型</div><div class="set-s" id="setModel">-</div></div>
+          </div>
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">提供方</div><div class="set-s">填入各提供方的 API 密钥即可使用其模型</div></div>
+            <span class="set-val" id="setProvider">-</span>
+          </div>
+        </div>
+        <div class="sec-title" style="margin-top:18px"><span>连接</span></div>
+        <div class="settings-card">
+          <button class="set-row set-btn" id="setEditConn" type="button">
+            <div class="set-l"><div class="set-t">修改连接</div><div class="set-s">重新输入服务器地址和令牌</div></div>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button class="set-row set-btn danger" id="setDisconnect" type="button">
+            <div class="set-l"><div class="set-t">断开连接</div><div class="set-s">清除保存的服务器和令牌</div></div>
+          </button>
+        </div>
+        <div class="sec-title" style="margin-top:18px"><span>关于</span></div>
         <div class="settings-card">
           <div class="set-row">
             <div class="set-l"><div class="set-t">连接状态</div><div class="set-s" id="setConn">未连接</div></div>
@@ -886,32 +1101,6 @@ svg { flex: none; }
           <div class="set-row">
             <div class="set-l"><div class="set-t">版本</div><div class="set-s mono" id="setVersion">-</div></div>
           </div>
-        </div>
-        <div class="sec-title" style="margin-top:18px"><span>连接</span></div>
-        <div class="settings-card">
-          <button class="set-row set-btn" id="setEditConn" type="button">
-            <div class="set-l"><div class="set-t">修改连接</div><div class="set-s">重新输入服务器地址和令牌</div></div>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-          <button class="set-row set-btn danger" id="setDisconnect" type="button">
-            <div class="set-l"><div class="set-t">断开连接</div><div class="set-s">清除保存的服务器和令牌</div></div>
-          </button>
-        </div>
-        <div class="sec-title" style="margin-top:18px"><span>外观</span></div>
-        <div class="settings-card" id="themeCard">
-          <div class="set-row">
-            <div class="set-l"><div class="set-t">主题</div><div class="set-s">界面外观颜色</div></div>
-          </div>
-          <div class="set-row">
-            <div class="theme-opts" id="themeOpts">
-              <button type="button" data-theme="dark">深色</button>
-              <button type="button" data-theme="light">浅色</button>
-              <button type="button" data-theme="system">跟随系统</button>
-            </div>
-          </div>
-        </div>
-        <div class="sec-title" style="margin-top:18px"><span>关于</span></div>
-        <div class="settings-card">
           <div class="set-row">
             <div class="set-l"><div class="set-t">DeepSeek Harness Relay</div><div class="set-s">手机远程控制电脑 DSH</div></div>
           </div>
@@ -951,7 +1140,8 @@ svg { flex: none; }
     taskStat: { input: 0, output: 0, cacheRead: 0 }, // 当前任务 token 统计（最下方展示）
     apprTimer: null,
     sessQuery: '',
-    theme: load('theme', 'system'),
+    drawerShowAll: false,     // 抽屉“展开其余 N 个会话”
+    theme: load('theme', 'dark'),   // 手机端默认深色；设置里可切 浅色/跟随系统
   };
 
   function toast(msg, isErr) {
@@ -961,6 +1151,21 @@ svg { flex: none; }
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function enc(s) { return encodeURIComponent(String(s)); }
   function fmtTime(iso) { if (!iso) return ''; var d = new Date(iso); if (isNaN(d)) return ''; return d.toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+  // 相对时间（对标 DSH 侧栏“4分钟/10小时”）
+  function fmtRelTime(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var s = Math.max(0, (Date.now() - d.getTime()) / 1000);
+    if (s < 60) return '刚刚';
+    var m = Math.round(s / 60);
+    if (m < 60) return m + ' 分钟';
+    var h = Math.round(m / 60);
+    if (h < 24) return h + ' 小时';
+    var day = Math.round(h / 24);
+    if (day < 30) return day + ' 天';
+    return (d.getMonth() + 1) + '/' + d.getDate();
+  }
   function fmtAgo(iso) { if (!iso) return ''; var s = (Date.now() - new Date(iso).getTime()) / 1000; if (s < 60) return '刚刚'; if (s < 3600) return Math.floor(s / 60) + ' 分钟前'; if (s < 86400) return Math.floor(s / 3600) + ' 小时前'; return fmtTime(iso); }
   function showPane(id) {
     ['paneConnect', 'paneWorkspaces', 'paneChat', 'paneFiles', 'paneEditor', 'paneTerminal', 'paneTasks', 'paneGoal', 'paneSkill', 'paneAgents', 'paneSettings'].forEach(function (p) {
@@ -1129,7 +1334,7 @@ svg { flex: none; }
     } catch (e) { toast('加载会话失败：' + e.message, true); }
   }
 
-  // ============ 会话（抽屉） ============
+  // ============ 会话（抽屉，对标 DSH 侧栏：工作区 / 会话·相对时间 / 展开其余） ============
   function renderDrawer() {
     var list = $('drawerList');
     list.textContent = '';
@@ -1155,18 +1360,27 @@ svg { flex: none; }
       list.appendChild(e2);
       return;
     }
-    sessions.forEach(function (s) {
+    // “会话”分区标题
+    var sec = document.createElement('div');
+    sec.className = 'sec-label';
+    sec.textContent = '会话';
+    list.appendChild(sec);
+    // 默认折叠到前 6 个，超出显示“展开其余 N 个会话”（对标 DSH 侧栏）
+    var head = (state.drawerShowAll || q) ? sessions.length : Math.min(6, sessions.length);
+    sessions.slice(0, head).forEach(function (s) {
       var it = document.createElement('div');
       it.className = 'drawer-item' + (state.currentSess && s.sessionId === state.currentSess.sessionId ? ' active' : '');
       it.style.cursor = 'pointer';
       var title = s.title || s.cwd || '会话';
-      var meta = String(s.cwd || '');
-      if (typeof s.messageCount === 'number') meta += (meta ? ' · ' : '') + s.messageCount + ' 条';
-      if (s.running) meta += (meta ? ' · ' : '') + '进行中';
       var main = document.createElement('div');
       main.className = 'main';
-      main.innerHTML = '<span class="drawer-title-row"><span class="ses-status' + (s.running ? ' run' : ' idle') + '"></span><span class="t">' + esc(title) + '</span></span><span class="s">' + esc(meta) + '</span>';
+      main.innerHTML = '<span class="drawer-title-row"><span class="ses-status' + (s.running ? ' run' : ' idle') + '"></span><span class="t">' + esc(title) + '</span></span>' +
+        (s.running ? '<span class="s">进行中</span>' : '');
+      main.title = String(s.cwd || '');
       main.addEventListener('click', function () { openSession(s); closeDrawer(); });
+      var tm = document.createElement('span');
+      tm.className = 'time';
+      tm.textContent = fmtRelTime(s.updatedAt || s.updatedAtMs);
       var fk = document.createElement('button');
       fk.className = 'drawer-del';
       fk.title = '分支会话';
@@ -1183,11 +1397,20 @@ svg { flex: none; }
       del.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
       del.addEventListener('click', function () { deleteSession(s); });
       it.appendChild(main);
+      it.appendChild(tm);
       it.appendChild(fk);
       it.appendChild(rn);
       it.appendChild(del);
       list.appendChild(it);
     });
+    if (sessions.length > head) {
+      var ex = document.createElement('button');
+      ex.type = 'button';
+      ex.className = 'drawer-expand';
+      ex.textContent = state.drawerShowAll ? '收起会话' : '展开其余 ' + (sessions.length - head) + ' 个会话';
+      ex.addEventListener('click', function () { state.drawerShowAll = !state.drawerShowAll; renderDrawer(); });
+      list.appendChild(ex);
+    }
   }
   // 分支会话（session.fork）
   async function forkSession(s) {
@@ -1273,8 +1496,24 @@ svg { flex: none; }
     tl.textContent = '';
     if (!state.msgs.length && !state.running) {
       var e = document.createElement('div');
-      e.className = 'empty-state';
-      e.innerHTML = '<div class="big">你好，我是电脑上的 DSH</div><div style="margin-top:8px">在下方输入任务，远程控制电脑执行</div>';
+      e.className = 'empty-state dsh-empty';
+      var sess = state.currentSess;
+      var perm = '';
+      if (sess && sess.permissions && sess.permissions.currentValue) {
+        var pv = sess.permissions.currentValue;
+        perm = '<span class="chip chip-perm' + (pv === 'danger-full-access' ? ' ch-full' : '') + '">' + esc(permNameMap[pv] || pv) + '</span>';
+      }
+      var mdlEl = $('modelBtnLabel'), mdl = (mdlEl && mdlEl.textContent !== '模型') ? mdlEl.textContent : 'DeepSeek V4 Flash';
+      var preEl = $('presetBtnLabel'), pre = (preEl && preEl.textContent) ? preEl.textContent : '标准模式';
+      e.innerHTML =
+        '<span class="dsh-empty-badge">预览版</span>' +
+        '<div class="big">探索未至之境</div>' +
+        '<div class="sub">描述你想要构建的内容</div>' +
+        '<div class="empty-chips">' +
+        '<span class="chip chip-preset">' + esc(pre) + '</span>' +
+        perm +
+        '<span class="chip chip-model">' + esc(mdl) + '</span>' +
+        '</div>';
       tl.appendChild(e);
       return;
     }
@@ -1398,6 +1637,53 @@ svg { flex: none; }
         apprEl.classList.add('hidden');
       }
     }
+  }
+  // ============ 轨迹面板（对话 / 轨迹切换，对标 DSH 桌面 ASSISTANT/TOOL 时间线） ============
+  function renderTrajectory() {
+    var list = $('trajList');
+    if (!list) return;
+    var q = ($('trajSearch').value || '').trim().toLowerCase();
+    var rows = [], turn = 0;
+    state.msgs.forEach(function (m) {
+      if (m.role === 'user' && m.text) {
+        rows.push({ type: 'user', text: m.text });
+      }
+      if (m.role === 'asst' || m.role === 'assistant') {
+        turn++;
+        var txt = (m.thinking ? m.thinking + '\n' : '') + (m.text || '');
+        if (txt.trim()) rows.push({ type: 'asst', text: txt, meta: '轮 ' + turn });
+        (m.steps || []).forEach(function (st) {
+          (st.tools || []).forEach(function (t) {
+            rows.push({ type: 'tool', text: t.name + (t.argsSummary ? '  ' + t.argsSummary : ''), meta: '轮 ' + turn });
+          });
+        });
+        (m.tools || []).forEach(function (t) {
+          rows.push({ type: 'tool', text: t.name + (t.argsSummary ? '  ' + t.argsSummary : ''), meta: '轮 ' + turn });
+        });
+      }
+      if (m.kind === 'tool' || m.kind === 'tool-result') {
+        rows.push({ type: 'tool', text: (m.text || '工具') + (m.argsSummary ? '  ' + m.argsSummary : '') });
+      }
+    });
+    if (q) rows = rows.filter(function (r) { return String(r.text).toLowerCase().indexOf(q) > -1; });
+    list.textContent = '';
+    $('trajCount').textContent = rows.length + ' 条';
+    if (!rows.length) {
+      var e = document.createElement('div');
+      e.className = 'traj-empty';
+      e.textContent = q ? '无匹配结果' : '暂无轨迹';
+      list.appendChild(e);
+      return;
+    }
+    rows.forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'traj-row ' + (r.type === 'tool' ? 'tool' : (r.type === 'user' ? 'asst' : 'asst'));
+      var label = r.type === 'tool' ? 'TOOL' : (r.type === 'user' ? 'USER' : 'ASSISTANT');
+      row.innerHTML = '<span class="tr-type">' + label + '</span>' +
+        '<span class="tr-t">' + esc(r.text) + '</span>' +
+        (r.meta ? '<span class="tr-meta">' + esc(r.meta) + '</span>' : '');
+      list.appendChild(row);
+    });
   }
   function msgEl(m) {
     if (m.kind === 'tool' || m.kind === 'tool-result') {
@@ -2656,6 +2942,18 @@ svg { flex: none; }
     $('setServer').textContent = state.base || '-';
     $('setConn').textContent = $('connLabel').textContent;
     $('setVersion').textContent = $('connLabel').textContent;
+    // 权限（当前会话 permissions.currentValue，对标 DSH 通用设置）
+    var sess = state.currentSess;
+    var permEl = $('setPerm');
+    if (permEl) {
+      permEl.textContent = (sess && sess.permissions && sess.permissions.currentValue)
+        ? (permNameMap[sess.permissions.currentValue] || sess.permissions.currentValue)
+        : '—';
+    }
+    // 模型 / 提供方
+    var mdlEl = $('setModel'), prvEl = $('setProvider');
+    if (mdlEl) mdlEl.textContent = modelState.current ? (modelState.current.model || '-') : '-';
+    if (prvEl) prvEl.textContent = modelState.current ? (modelState.current.provider || '-') : '-';
     // 主题按钮高亮
     var opts = $('themeOpts');
     if (opts) {
@@ -2734,6 +3032,14 @@ svg { flex: none; }
     $('agentsBack').addEventListener('click', function () { showPane('paneChat'); });
     $('agentsRefresh').addEventListener('click', loadAgents);
     $('settingsBtn').addEventListener('click', function () { closeDrawer(); renderSettings(); showPane('paneSettings'); });
+    // 设置页“打开配置文件”：读取电脑端 DSH settings.yaml 路径并在编辑器中打开
+    $('setOpenCfg').addEventListener('click', async function () {
+      try {
+        var d = await api('/api/dsh-config', { timeoutMs: 6000 });
+        if (d && d.ok && d.path) { openFileViewer(d.path); }
+        else { toast((d && d.error) || '获取配置路径失败', true); }
+      } catch (e) { toast('失败：' + e.message, true); }
+    });
     $('settingsBackBtn').addEventListener('click', function () { showPane('paneChat'); });
     // 主题切换
     $('themeOpts').addEventListener('click', function (e) {
@@ -2761,6 +3067,8 @@ svg { flex: none; }
       $('timeline').textContent = '';
       $('composerModels').classList.remove('hidden'); // 顶栏胶囊常驻；输入框行仅审批按需显示
       renderDrawer();
+      renderTimeline(); // 空状态（探索未至之境）
+      closeDrawer();    // 手机端点新会话后收起抽屉
       showPane('paneChat');
       $('input').focus();
     });
@@ -2803,6 +3111,15 @@ svg { flex: none; }
       while (t && t !== this && !(t.classList && t.classList.contains('tool-card'))) t = t.parentElement;
       if (t && t !== this && t.classList.contains('tool-card')) t.classList.toggle('open');
     });
+    // 对话 / 轨迹切换（对标 DSH 桌面）
+    $('trajToggle').addEventListener('click', function () {
+      var show = $('trajPanel').classList.toggle('hidden') === false;
+      $('trajToggle').classList.toggle('on', show);
+      $('trajToggleLabel').textContent = show ? '对话' : '轨迹';
+      $('timeline').classList.toggle('hidden', show);
+      if (show) renderTrajectory();
+    });
+    $('trajSearch').addEventListener('input', renderTrajectory);
 
     // 手机：抽屉按钮在顶栏；桌面宽屏：抽屉常驻
     if (window.innerWidth < 900) {
