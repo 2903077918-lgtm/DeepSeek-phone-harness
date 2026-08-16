@@ -15,3 +15,8 @@ node_modules/
 cloud-relay/.dev.vars
 cloud-relay/.wrangler/
 .wrangler/
+
+# ---- ÊÓÆµÖÆ×÷£¨Remotion£©----
+video/remotion/node_modules/
+video/remotion/out/
+video/remotion/.remotion/
