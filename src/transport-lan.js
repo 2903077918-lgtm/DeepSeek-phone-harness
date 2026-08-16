@@ -195,6 +195,18 @@ export function createLanTransport({ config, rootDir, executor, history, queue, 
         res.end(existsSync(swFile) ? readFileSync(swFile, 'utf8') : '/* sw.js 缺失 */');
         return;
       }
+      // 品牌鲸鱼 logo（连接页/空态欢迎页）
+      if (req.method === 'GET' && url.pathname === '/whale-logo.png') {
+        const imgFile = path.join(rootDir, 'web', 'whale-logo.png');
+        if (existsSync(imgFile)) {
+          res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' });
+          res.end(readFileSync(imgFile));
+        } else {
+          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+          res.end('whale-logo.png 缺失');
+        }
+        return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/status') {
         if (!auth(req, res)) return;
         sendJson(res, 200, { ok: true, agent: 'deepseekharness-relay', version: AGENT_VERSION, time: new Date().toISOString(), pending: queue.size });
