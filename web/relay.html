@@ -1184,6 +1184,7 @@ svg { flex: none; }
         if (it.role === 'tool' || it.role === 'tool-result') {
           m.argsSummary = it.argsSummary; m.arguments = it.arguments; m.result = it.result; m.isError = it.isError; m.callId = it.callId;
         }
+        if (it.messageId) m.messageId = it.messageId; // 供赞/踩反馈
         return m;
       });
       // 合并进行中的消息（用户新输入 + 流式助手）
@@ -2010,6 +2011,7 @@ svg { flex: none; }
             if (it.role === 'tool' || it.role === 'tool-result') {
               m.argsSummary = it.argsSummary; m.arguments = it.arguments; m.result = it.result; m.isError = it.isError; m.callId = it.callId;
             }
+            if (it.messageId) m.messageId = it.messageId;
             return m;
           });
           renderTimeline();

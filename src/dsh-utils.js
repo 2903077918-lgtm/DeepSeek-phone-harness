@@ -97,8 +97,15 @@ export function eventToStreamItem(ev) {
     }
   } else if (type === 'turn/end') {
     kind = 'done';
+  } else if (type === 'step/start') {
+    kind = 'step-start'; // 分步边界：前端据此开新 step 卡片
+  } else if (type === 'step/end') {
+    kind = 'step-end';
   }
   const item = { seq: Number(ev.seq) || 0, type, kind, time: isoTime(ev.time) };
+  // 带 step 编号（存在时）供前端分组
+  if (typeof data.step === 'number') item.step = data.step;
+  if (typeof data.turn === 'number') item.turn = data.turn;
   if (text !== undefined) item.text = text;
   if (subtype) item.subtype = subtype;
   // 工具调用参数 / 结果详情（手机端工具卡片展开用）
@@ -155,7 +162,10 @@ export function historyToMessages(events) {
       const content = data.message && data.message.content;
       if (Array.isArray(content)) {
         const text = content.filter((c) => c && c.type === 'text').map((c) => c.text || '').join('');
-        if (text) items.push({ role: 'assistant', text, time: isoTime(e.time) });
+        const entry = { role: 'assistant', text, time: isoTime(e.time) };
+        // 保留 messageId 供赞/踩反馈定位
+        if (data.message && data.message.id) entry.messageId = String(data.message.id);
+        items.push(entry);
       }
     } else if (e.type === 'tool/call' && data.name) {
       const entry = {

@@ -555,7 +555,6 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
       }
     },
     // ---- Agent 预设（模式）：
-    // GET /api/dsh-presets：agentPreset.list → {ok, presets:[{id,name,description,isDefault,trust,broken}], authorable}
     async listAgentPresets() {
       try {
         const value = await fetchRpc('agentPreset.list', {});
