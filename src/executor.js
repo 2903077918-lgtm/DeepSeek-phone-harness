@@ -371,14 +371,31 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
       return { ok: true, sessionId: sid, interrupt: !!interrupt, result };
     },
     // GET /api/dsh-history?sessionId=：转发 session.history 归一化为对话消息
-    async getDshHistory(sessionId, limit) {
+    // GET /api/dsh-history[?sessionId=&maxMessages=&beforeSeq=&limit=]：
+    // 转发 session.history（beforeSeq/maxMessages 向前翻页），事件→消息归一化，返回 firstSeq/hasMore
+    async getDshHistory(sessionId, limit, opts) {
       const sid = String(sessionId || '').trim();
       if (!sid) throw new Error('sessionId 不能为空');
-      const value = await fetchRpc('session.history', { sessionId: sid });
-      let items = historyToMessages((value && value.events) || []);
+      const o = opts || {};
+      const payload = { sessionId: sid };
+      if (Number.isInteger(o.maxMessages) && o.maxMessages > 0) payload.maxMessages = o.maxMessages;
+      if (Number.isInteger(o.beforeSeq) && o.beforeSeq >= 0) payload.beforeSeq = o.beforeSeq;
+      const value = await fetchRpc('session.history', payload);
+      const events = (value && value.events) || [];
+      const items = historyToMessages(events);
+      // 本页事件的最早/最晚 seq + 是否还有更早（hasMore）
+      let firstSeq = null, lastSeq = null;
+      for (const ev of events) {
+        const s = ev && ev.event && typeof ev.event.seq === 'number' ? ev.event.seq : null;
+        if (s === null) continue;
+        if (firstSeq === null || s < firstSeq) firstSeq = s;
+        if (lastSeq === null || s > lastSeq) lastSeq = s;
+      }
+      const hasMore = !!(value && value.hasMore);
+      // 兼容旧调用：limit 在内存里取尾部 N 条
       const n = Number(limit);
       if (Number.isInteger(n) && n > 0 && items.length > n) items = items.slice(-n);
-      return items;
+      return { items, firstSeq, lastSeq, hasMore };
     },
     // GET /api/events?sessionId=&afterSeq=：流式增量轮询（缓冲来自 events.mux 的 session/event 帧）
     getEvents(sessionId, afterSeq) {
@@ -572,7 +589,7 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
       try {
         const value = await fetchRpc('settings.describe', {});
         const namespaces = (value && value.namespaces) || [];
-        const pick = ['ui-conversation', 'locale', 'permission', 'ui-theme', 'llm-pi-ai', 'agent-default-model', 'agent-presets'];
+        const pick = ['ui-conversation', 'locale', 'permission', 'ui-theme', 'llm-pi-ai', 'agent-default-model', 'agent-presets', 'web-search-deepseek'];
         const slim = namespaces.filter((n) => pick.includes(n.ns)).map((n) => ({ ns: n.ns, value: n.value || {}, user: n.user || null, revision: n.revision }));
         return { ok: true, writable: !!(value && value.writable), namespaces: slim };
       } catch (e) {

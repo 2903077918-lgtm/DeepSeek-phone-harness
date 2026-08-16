@@ -384,6 +384,9 @@ svg { flex: none; }
 
 /* 时间线 */
 .timeline { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 14px; display: flex; flex-direction: column; gap: 16px; }
+/* "加载更早消息"按钮（历史分页向前翻页） */
+.load-more-row { display: block; margin: 0 auto; padding: 8px 20px; font-size: 12px; color: var(--text-2); background: var(--bg-sel); border: 1px dashed var(--border-strong); border-radius: 999px; cursor: pointer; flex: none; }
+.load-more-row:active { transform: scale(0.97); }
 .msg { display: flex; gap: 8px; max-width: 100%; }
 .msg.user { justify-content: flex-end; }
 .msg .avatar {
@@ -698,6 +701,8 @@ svg { flex: none; }
 .provider-item .pi-act { flex: none; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--text-3); }
 .provider-item .pi-act:hover { background: var(--bg-sel); color: var(--text); }
 .provider-item .pi-act.del:hover { background: var(--red-soft); color: var(--red); }
+.ws-input { flex: 1; min-width: 0; background: var(--bg-sel); border: 1px solid var(--border-strong); border-radius: 9px; color: var(--text); font-size: 13px; padding: 8px 10px; outline: none; font-family: var(--mono); }
+.ws-input:focus { border-color: var(--blue); }
 .provider-empty { padding: 14px; text-align: center; font-size: 12px; color: var(--text-3); }
 .set-l { flex: 1; min-width: 0; }
 .set-t { font-size: 14px; font-weight: 600; }
@@ -1254,6 +1259,26 @@ svg { flex: none; }
             <div class="set-l"><div class="set-t">API 密钥</div><div class="set-s">在电脑端 DSH 凭据中管理，不会发送到手机</div></div>
           </div>
         </div>
+        <div class="sec-title" style="margin-top:18px"><span>网页搜索</span></div>
+        <div class="settings-card">
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">网页搜索（web-search-deepseek）</div><div class="set-s">DSH 网页检索工具的 DeepSeek 配置</div></div>
+          </div>
+          <div class="set-row"><input class="ws-input" id="wsModel" type="text" placeholder="模型 ID，如 deepseek-v4-flash"></div>
+          <div class="set-row"><input class="ws-input" id="wsBaseURL" type="text" placeholder="Base URL（可选）"></div>
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">Max tokens</div><div class="set-s">单次网页检索最大 token</div></div>
+            <input class="ws-input" id="wsMaxTokens" type="number" style="flex:none;width:96px" min="1">
+          </div>
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">Max uses</div><div class="set-s">每任务最多检索次数</div></div>
+            <input class="ws-input" id="wsMaxUses" type="number" style="flex:none;width:96px" min="1">
+          </div>
+          <div class="set-row"><div class="set-l"><div class="set-t">API 密钥环境变量</div><div class="set-s mono" id="wsApiKeyEnv">DEEPSEEK_API_KEY</div></div></div>
+          <button class="set-row set-btn" id="wsSave" type="button">
+            <div class="set-l"><div class="set-t">保存网页搜索配置</div><div class="set-s">写入电脑端 DSH 设置</div></div>
+          </button>
+        </div>
         <div class="sec-title" style="margin-top:18px"><span>连接</span></div>
         <div class="settings-card">
           <button class="set-row set-btn" id="setEditConn" type="button">
@@ -1307,6 +1332,9 @@ svg { flex: none; }
     currentWs: null,
     currentSess: null,
     msgs: [],
+    historyFirstSeq: null,   // 已加载历史最早事件 seq（"加载更早"分页游标）
+    historyHasMore: false,   // 是否还有更早消息
+    loadingOlder: false,     // "加载更早"进行中
     running: false,
     streamTimer: null,
     statTimer: null,        // 统计条实时刷新（任务运行期周期拉最新 projections）
@@ -1723,10 +1751,14 @@ svg { flex: none; }
     var preserveRunning = state.running && state.msgs.length;
     var runningMsgs = preserveRunning ? state.msgs.slice() : [];
     state.msgs = [];
+    state.historyFirstSeq = null; // 已加载历史的最早事件 seq（"加载更早"用 beforeSeq）
+    state.historyHasMore = false; // 是否还有更早消息
     appendMsg('asst', '加载会话历史…', { plain: true });
     try {
-      var d = await api('/api/dsh-history?sessionId=' + enc(sess.sessionId), { timeoutMs: 10000 });
+      var d = await api('/api/dsh-history?sessionId=' + enc(sess.sessionId) + '&maxMessages=60', { timeoutMs: 15000 });
       var items = (d && d.items) || [];
+      state.historyFirstSeq = (d && typeof d.firstSeq === 'number') ? d.firstSeq : null;
+      state.historyHasMore = !!(d && d.hasMore);
       state.msgs = items.map(function (it) {
         var m = { role: it.role === 'user' ? 'user' : 'asst', text: it.text || '', time: it.time || it.at || '', kind: it.role };
         if (it.role === 'tool' || it.role === 'tool-result') {
@@ -1758,6 +1790,38 @@ svg { flex: none; }
         renderTimeline();
         appendMsg('asst', '历史加载失败：' + e.message, { plain: true });
       }
+    }
+  }
+  // "加载更早"：beforeSeq 向前翻页，prepend 更早消息并保持滚动位置
+  async function loadOlderHistory() {
+    if (!state.currentSess || state.loadingOlder) return;
+    if (!state.historyFirstSeq) { state.historyHasMore = false; renderTimeline(); return; }
+    state.loadingOlder = true;
+    var oldLen = state.msgs.length; // 旧第一条在新数组里的索引
+    try {
+      var d = await api('/api/dsh-history?sessionId=' + enc(state.currentSess.sessionId) + '&beforeSeq=' + state.historyFirstSeq + '&maxMessages=60', { timeoutMs: 15000 });
+      var items = (d && d.items) || [];
+      if (!items.length) { state.historyHasMore = false; renderTimeline(); return; }
+      var older = items.map(function (it) {
+        var m = { role: it.role === 'user' ? 'user' : 'asst', text: it.text || '', time: it.time || it.at || '', kind: it.role };
+        if (it.role === 'tool' || it.role === 'tool-result') {
+          m.argsSummary = it.argsSummary; m.arguments = it.arguments; m.result = it.result; m.isError = it.isError; m.callId = it.callId;
+        }
+        if (it.messageId) m.messageId = it.messageId;
+        return m;
+      });
+      state.msgs = older.concat(state.msgs);
+      if (typeof d.firstSeq === 'number') state.historyFirstSeq = d.firstSeq;
+      state.historyHasMore = !!(d && d.hasMore);
+      renderTimeline(); // 内部会滚到底，下面覆盖回锚点
+      var tl = $('timeline');
+      var anchorEl = tl.querySelector('[data-i="' + oldLen + '"]');
+      if (anchorEl) tl.scrollTop = anchorEl.offsetTop - 70;
+      else tl.scrollTop = 0;
+    } catch (e) {
+      toast('加载更早失败：' + e.message, true);
+    } finally {
+      state.loadingOlder = false;
     }
   }
   function renderTimeline() {
@@ -1796,7 +1860,16 @@ svg { flex: none; }
       renderPermPill();
       return;
     }
-    state.msgs.forEach(function (m) { tl.appendChild(msgEl(m)); });
+    // 有更早历史时，顶部渲染"加载更早"按钮
+    if (state.msgs.length && state.historyHasMore) {
+      var lm = document.createElement('button');
+      lm.type = 'button';
+      lm.className = 'load-more-row';
+      lm.textContent = state.locale === 'en' ? 'Load earlier messages' : '加载更早消息';
+      lm.addEventListener('click', loadOlderHistory);
+      tl.appendChild(lm);
+    }
+    state.msgs.forEach(function (m, i) { var el = msgEl(m); el.dataset.i = i; tl.appendChild(el); });
     // 有流式消息时不显示额外 pending
     var hasStreaming = state.msgs.some(function (m) { return m.streaming; });
     if (state.running && !hasStreaming) tl.appendChild(pendingEl());
@@ -2757,9 +2830,11 @@ svg { flex: none; }
     renderTimeline();
     // DSH 已完成写入：重载历史拿最终结果
     if (state.currentSess) {
-      api('/api/dsh-history?sessionId=' + enc(state.currentSess.sessionId), { timeoutMs: 8000 })
+      api('/api/dsh-history?sessionId=' + enc(state.currentSess.sessionId) + '&maxMessages=60', { timeoutMs: 15000 })
         .then(function (d) {
           var items = (d && d.items) || [];
+          state.historyFirstSeq = (d && typeof d.firstSeq === 'number') ? d.firstSeq : state.historyFirstSeq;
+          state.historyHasMore = !!(d && d.hasMore);
           state.msgs = items.map(function (it) {
             var m = { role: it.role === 'user' ? 'user' : 'asst', text: it.text || '', time: it.time || it.at || '', kind: it.role };
             if (it.role === 'tool' || it.role === 'tool-result') {
@@ -3625,11 +3700,11 @@ svg { flex: none; }
     '新会话': 'New chat', '搜索会话': 'Search sessions', '工作区': 'Workspace', '会话': 'Sessions',
     '展开其余 ': 'Show ', ' 个会话': ' sessions', '收起会话': 'Collapse', '更多功能': 'More',
     '设置': 'Settings', '文件': 'Files', '终端': 'Terminal', '任务': 'Tasks', '目标': 'Goals', '技能': 'Skills',
-    '默认 Agent 预设': 'Default agent preset', '之后新建的会话使用该模式': 'Used for newly created sessions', '已设置默认 Agent 预设': 'Default agent preset set',
+    '默认 Agent 预设': 'Default agent preset', '之后新建的会话使用该模式': 'Used for newly created sessions', '已设置默认 Agent 预设': 'Default agent preset set', '网页搜索': 'Web search', '网页搜索（web-search-deepseek）': 'Web search (web-search-deepseek)', 'DSH 网页检索工具的 DeepSeek 配置': 'DeepSeek config for DSH web search tool', '单次网页检索最大 token': 'Max tokens per web search', '每任务最多检索次数': 'Max uses per task', 'API 密钥环境变量': 'API key env var', '保存网页搜索配置': 'Save web search config', '写入电脑端 DSH 设置': 'Write to DSH settings on your PC', '已保存网页搜索配置': 'Web search config saved',
     '子代理': 'Subagents', '连接设置': 'Connection', '选择工作区': 'Select workspace', '进行中': 'Running',
     '搜索': 'Search', '搜索轨迹': 'Search trajectory', '条': 'items', '暂无轨迹': 'No trajectory', '无匹配结果': 'No matches',
     '对话': 'Chat', '轨迹': 'Trajectory', '切换工作区': 'Switch workspace', '返回': 'Back', '刷新': 'Refresh', '重连': 'Reconnect',
-    '输入任务，交给电脑上的 DSH…': 'Send a task to DSH on your PC…', '停止': 'Stop', '发送': 'Send',
+    '加载更早消息': 'Load earlier messages', '输入任务，交给电脑上的 DSH…': 'Send a task to DSH on your PC…', '停止': 'Stop', '发送': 'Send',
     '任务清单': 'Task list', '步': 'steps', '需要授权': 'Approval needed', '允许一次': 'Allow once', '拒绝': 'Reject',
     '需要批准': 'Approval needed', '项待批准': ' pending', '复制': 'Copy', '思考过程': 'Thinking', '思考': 'Think',
     '步骤 ': 'Step ', '执行中': 'Running', '完成': 'Done', '失败': 'Failed', '参数': 'Arguments', '结果': 'Result', '错误': 'Error',
@@ -3789,6 +3864,9 @@ svg { flex: none; }
         defaultPresetId = ap.default;
         updateDefPresetBtn();
       }
+      // 网页搜索（web-search-deepseek）
+      var ws = find('web-search-deepseek');
+      fillWsSettings(ws);
       // 繁忙时 Enter：DSH 设置优先，其次本地记忆
       var be = uc.busyEnter || state.busyEnter || 'steer';
       state.busyEnter = be;
@@ -3801,8 +3879,33 @@ svg { flex: none; }
       applyLocale();
     } catch (e) { /* 设置接口不可用则保持默认 */ }
   }
-  async function mutateSetting(ns, ops) {
-    try {
+  // 网页搜索配置填充（web-search-deepseek）
+  function fillWsSettings(ws) {
+    ws = ws || {};
+    var set = function (id, v) { var el = $(id); if (el && v !== undefined && v !== null && v !== '') el.value = String(v); };
+    set('wsModel', ws.model);
+    set('wsBaseURL', ws.baseURL);
+    set('wsMaxTokens', ws.maxTokens);
+    set('wsMaxUses', ws.maxUses);
+    var env = $('wsApiKeyEnv');
+    if (env && ws.apiKeyEnv) env.textContent = ws.apiKeyEnv;
+  }
+  // 保存网页搜索配置
+  async function saveWebSearch() {
+    var ops = [];
+    var model = ($('wsModel').value || '').trim();
+    var baseURL = ($('wsBaseURL').value || '').trim();
+    var maxTokens = parseInt($('wsMaxTokens').value, 10);
+    var maxUses = parseInt($('wsMaxUses').value, 10);
+    if (model) ops.push({ op: 'set', path: ['model'], value: model });
+    if (baseURL) ops.push({ op: 'set', path: ['baseURL'], value: baseURL });
+    if (Number.isInteger(maxTokens) && maxTokens > 0) ops.push({ op: 'set', path: ['maxTokens'], value: maxTokens });
+    if (Number.isInteger(maxUses) && maxUses > 0) ops.push({ op: 'set', path: ['maxUses'], value: maxUses });
+    if (!ops.length) { toast('没有可保存的配置', true); return; }
+    var ok = await mutateSetting('web-search-deepseek', ops);
+    if (ok) toast(state.locale === 'en' ? 'Web search config saved' : '已保存网页搜索配置');
+  }
+  async function mutateSetting(ns, ops) {    try {
       var d = await api('/api/dsh-settings', { method: 'POST', body: JSON.stringify({ ns: ns, ops: ops, expectedRevision: 0 }), timeoutMs: 10000 });
       if (d && d.ok) return true;
       toast((d && d.error) || '设置保存失败', true);
@@ -4078,6 +4181,7 @@ svg { flex: none; }
     // 模式切换
     $('presetBtn').addEventListener('click', function () { presetPickMode = null; openPresetSheet(); });
     $('defPresetBtn').addEventListener('click', function () { presetPickMode = 'default'; openPresetSheet(); });
+    $('wsSave').addEventListener('click', saveWebSearch);
     $('presetClose').addEventListener('click', function () { presetPickMode = null; $('presetMask').classList.add('hidden'); });
     $('presetMask').addEventListener('click', function (e) { if (e.target === $('presetMask')) { presetPickMode = null; $('presetMask').classList.add('hidden'); } });
     // 权限面板

@@ -371,9 +371,17 @@ export function createLanTransport({ config, rootDir, executor, history, queue, 
         if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
         if (typeof executor.getDshHistory !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
         try {
-          const limit = Number(url.searchParams.get('limit') || '');
-          const items = await executor.getDshHistory(sessionId, Number.isFinite(limit) ? limit : undefined);
-          sendJson(res, 200, { ok: true, items });
+          const limitRaw = url.searchParams.get('limit');
+          const mmRaw = url.searchParams.get('maxMessages');
+          const bsRaw = url.searchParams.get('beforeSeq');
+          const limit = limitRaw === null ? NaN : Number(limitRaw);
+          const maxMessages = mmRaw === null ? NaN : Number(mmRaw);
+          const beforeSeq = bsRaw === null ? NaN : Number(bsRaw);
+          const out = await executor.getDshHistory(sessionId, Number.isFinite(limit) ? limit : undefined, {
+            maxMessages: Number.isInteger(maxMessages) && maxMessages > 0 ? maxMessages : undefined,
+            beforeSeq: Number.isInteger(beforeSeq) && beforeSeq >= 0 ? beforeSeq : undefined,
+          });
+          sendJson(res, 200, { ok: true, items: out.items, firstSeq: out.firstSeq, hasMore: out.hasMore });
         } catch (e) {
           sendJson(res, 502, { ok: false, error: 'DSH 历史读取失败: ' + String(e) });
         }
