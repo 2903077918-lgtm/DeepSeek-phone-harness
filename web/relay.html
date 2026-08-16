@@ -256,7 +256,7 @@ svg { flex: none; }
 .connect-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; }
 .connect-card { width: 100%; max-width: 380px; }
 .connect-hero { text-align: center; margin-bottom: 26px; }
-.connect-hero .whale-lg { width: 56px; height: 56px; color: var(--blue-2); margin: 0 auto 12px; }
+.connect-hero .whale-lg { width: 60px; height: 60px; margin: 0 auto 14px; filter: drop-shadow(0 8px 16px rgba(64,112,224,0.32)); }
 .connect-hero h1 { font-size: 20px; font-weight: 800; }
 .connect-hero p { color: var(--text-2); font-size: 13px; margin-top: 6px; line-height: 1.6; }
 .field { margin-bottom: 14px; }
@@ -883,7 +883,39 @@ svg { flex: none; }
       <div class="connect-wrap">
         <div class="connect-card">
           <div class="connect-hero">
-            <svg class="whale-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 13.5c0-3.8 3.2-7.5 9.5-7.5 5.4 0 9.5 3.1 9.5 6.9 0 3-2.1 4.9-5.2 4.9-2 0-3.1-.9-4.1-2-1 1.1-2.1 2-4.1 2C5 17.8 2.5 15.9 2.5 13.5z"/><path d="M2.5 13.5C1.6 13.5.8 12.7.8 11.8c0-.9.8-1.7 1.7-1.7"/><circle cx="17.8" cy="10.8" r=".55" fill="currentColor"/><path d="M6.5 9.5l2 1.2-2 1.2"/></svg>
+            <svg class="whale-lg" viewBox="0 0 64 64" fill="none" aria-label="DeepSeek Harness">
+              <defs>
+                <linearGradient id="phWhaleBody" x1="8" y1="14" x2="56" y2="50" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stop-color="#6E9BFF"/>
+                  <stop offset="0.55" stop-color="#4070E0"/>
+                  <stop offset="1" stop-color="#2B49C9"/>
+                </linearGradient>
+                <linearGradient id="phWhaleBelly" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#F2F7FF" stop-opacity="0.9"/>
+                  <stop offset="1" stop-color="#D8E4FF" stop-opacity="0.5"/>
+                </linearGradient>
+              </defs>
+              <!-- 喷水柱 + 水滴 -->
+              <path d="M14 16 C 12 11, 13 8, 10 4" stroke="url(#phWhaleBody)" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+              <circle cx="8" cy="2.6" r="1.7" fill="#6E9BFF"/>
+              <circle cx="12.5" cy="2.2" r="1.2" fill="#6E9BFF"/>
+              <circle cx="15.5" cy="5" r="1" fill="#8FB2FF"/>
+              <!-- 身体（圆润侧影，原创造型） -->
+              <path d="M6 33 C 5 27, 7 21, 13 18 C 20 14, 30 12, 38 14 C 44 16, 48 18, 50 22 C 54 14, 56 9, 60 5 Q 57 12 58 15 C 61 15, 61 18, 55 23 C 48 30, 40 36, 30 38 C 20 40, 10 39, 6 33 Z" fill="url(#phWhaleBody)"/>
+              <!-- 背部高光 -->
+              <ellipse cx="27" cy="18.5" rx="10" ry="3" fill="#fff" opacity="0.18" transform="rotate(-8 27 18.5)"/>
+              <!-- 腹部浅色 -->
+              <path d="M9 35.5 C 18 40, 30 40.5, 42 34 C 34 38.5, 20 38, 9 35.5 Z" fill="url(#phWhaleBelly)"/>
+              <!-- 胸鳍 -->
+              <path d="M22 32 C 26 37, 27 41, 23 43 C 21 41, 20 36, 22 32 Z" fill="url(#phWhaleBody)" opacity="0.92"/>
+              <!-- 眼睛 + 微笑 -->
+              <circle cx="16" cy="23" r="2.8" fill="#fff"/>
+              <circle cx="17.1" cy="23.6" r="1.4" fill="#1B2C6E"/>
+              <path d="M10 28.5 Q 12 31 14.5 30" stroke="#fff" stroke-opacity="0.85" stroke-width="1.3" stroke-linecap="round" fill="none"/>
+              <!-- 尾迹气泡 -->
+              <circle cx="44" cy="27" r="1.4" stroke="#6E9BFF" stroke-width="1.2" fill="none"/>
+              <circle cx="47.5" cy="30" r="0.9" stroke="#8FB2FF" stroke-width="1" fill="none"/>
+            </svg>
             <h1>连接你的电脑</h1>
             <p>输入电脑端显示的地址和令牌，<br>在任何网络下控制 DeepSeek Harness</p>
           </div>
