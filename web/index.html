@@ -123,6 +123,10 @@ svg { flex: none; }
   border-radius: 7px; color: var(--text-3); opacity: 0;
   transition: opacity 0.15s;
 }
+/* 触屏设备：这些按钮无 hover 本就点不到，直接隐藏避免占位挤压标题 */
+@media (hover: none) {
+  .drawer-item .drawer-del { display: none; }
+}
 .drawer-item:hover .drawer-del { opacity: 1; }
 .drawer-del:hover { background: var(--red-soft); color: var(--red); }
 .drawer-item .ic { color: var(--text-2); display: grid; place-items: center; flex: none; }
@@ -1473,6 +1477,7 @@ svg { flex: none; }
   async function openSession(sess) {
     state.currentSess = sess;
     state.taskStat = { input: 0, output: 0, cacheRead: 0 }; // 切换会话清空任务级统计，只显示当前会话
+    var ts = $('trajSearch'); if (ts) ts.value = ''; // 轨迹搜索词不跨会话残留
     $('chatTitle').textContent = sess.title || sess.cwd || '对话';
     $('chatSub').textContent = String(sess.cwd || '');
     $('timeline').textContent = '';
@@ -2998,7 +3003,7 @@ svg { flex: none; }
   function renderSettings() {
     $('setServer').textContent = state.base || '-';
     $('setConn').textContent = $('connLabel').textContent;
-    $('setVersion').textContent = $('connLabel').textContent;
+    // 版本由 connect() 设置（'v'+version），这里不覆盖
     // 权限（当前会话 permissions.currentValue，对标 DSH 通用设置）
     var sess = state.currentSess;
     var permEl = $('setPerm');
@@ -3123,6 +3128,7 @@ svg { flex: none; }
       state.currentSess = null;
       state.msgs = [];
       state.taskStat = { input: 0, output: 0, cacheRead: 0 }; // 新会话清空统计，空状态不显示旧会话数据
+      var ts2 = $('trajSearch'); if (ts2) ts2.value = '';
       $('chatTitle').textContent = '新对话';
       $('chatSub').textContent = state.currentWs.path || '';
       $('timeline').textContent = '';
