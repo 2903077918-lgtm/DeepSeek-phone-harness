@@ -366,6 +366,8 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         await sleep(600);
       }
       const result = await runWebApi(task, onDelta, sid, images);
+      // 任务完成推送（手机可能在后台）
+      notifyTaskDone(sid, !!(result && result.ok), (result && (result.stdout || result.stderr)) || '');
       return { ok: true, sessionId: sid, interrupt: !!interrupt, result };
     },
     // GET /api/dsh-history?sessionId=：转发 session.history 归一化为对话消息
@@ -703,9 +705,24 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
   Object.defineProperty(executor, 'relay', {
     enumerable: true,
     get() {
-      if (!relayInstance) relayInstance = createApprovalRelay();
+      if (!relayInstance) {
+        relayInstance = createApprovalRelay({
+          onNotify: pushNotifier ? pushNotifier.notify : undefined,
+        });
+      }
       return relayInstance;
     },
   });
+  // 推送通知（web-push）：由 agent.mjs 注入 pushNotifier = {notify(payload)}（审批/提问/任务完成触发）
+  let pushNotifier = null;
+  executor.setPushNotifier = function (n) { pushNotifier = n; };
+  // 任务完成推送（continueSession 结束时调用）
+  function notifyTaskDone(sessionId, ok, summary) {
+    if (!pushNotifier) return;
+    try {
+      pushNotifier.notify({ kind: 'task-done', sessionId: String(sessionId || ''), ok: !!ok, summary: String(summary || '').slice(0, 120) });
+    } catch { /* 通知失败不阻断 */ }
+  }
+  executor.notifyTaskDone = notifyTaskDone;
   return executor;
 }

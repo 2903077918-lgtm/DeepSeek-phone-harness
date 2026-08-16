@@ -106,7 +106,7 @@ function stopShellJob(jobId) {
   return { ok: true };
 }
 
-export function createLanTransport({ config, rootDir, executor, history, queue }) {
+export function createLanTransport({ config, rootDir, executor, history, queue, push }) {
   function auth(req, res) {
     const h = req.headers.authorization || '';
     if (h !== `Bearer ${config.token}`) {
@@ -178,7 +178,7 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         return;
       }
       // 独立手机界面（codex-relay 风格）
-      if (req.method === 'GET' && (url.pathname === '/relay.html' || url.pathname === '/mobile')) {
+      if ((req.method === 'GET' && url.pathname === '/relay.html') || (req.method === 'GET' && url.pathname === '/mobile')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate' });
         const relayFile = path.join(rootDir, 'web', 'relay.html');
         if (existsSync(relayFile)) {
@@ -186,6 +186,13 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         } else {
           res.end('<!DOCTYPE html><html><body><h1>relay.html 缺失</h1></body></html>');
         }
+        return;
+      }
+      // 推送 Service Worker（PWA Web Push）
+      if (req.method === 'GET' && url.pathname === '/sw.js') {
+        res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' });
+        const swFile = path.join(rootDir, 'web', 'sw.js');
+        res.end(existsSync(swFile) ? readFileSync(swFile, 'utf8') : '/* sw.js 缺失 */');
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/status') {
@@ -640,7 +647,42 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         sendJson(res, out.ok ? 200 : 400, out);
         return;
       }
-      // ---- DSH 凭据（API 密钥导入）：POST /api/dsh-credentials {action:'set'|'unset', ref, value?} ----
+      // ---- 推送通知（Web Push）：/api/push/vapid|register|list|remove|test ----
+      if (req.method === 'GET' && url.pathname === '/api/push/vapid') {
+        if (!auth(req, res)) return;
+        if (!push) { sendJson(res, 501, { ok: false, error: '推送未启用' }); return; }
+        sendJson(res, 200, { ok: true, publicKey: push.publicKeyB64 });
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/push/register') {
+        if (!auth(req, res)) return;
+        if (!push) { sendJson(res, 501, { ok: false, error: '推送未启用' }); return; }
+        const body = await readBody(req);
+        const out = push.store.register(body.subscription, body.deviceLabel || '手机');
+        sendJson(res, out.ok ? 200 : 400, out);
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/push/list') {
+        if (!auth(req, res)) return;
+        if (!push) { sendJson(res, 501, { ok: false, error: '推送未启用' }); return; }
+        sendJson(res, 200, { ok: true, items: push.store.list() });
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/push/remove') {
+        if (!auth(req, res)) return;
+        if (!push) { sendJson(res, 501, { ok: false, error: '推送未启用' }); return; }
+        const body = await readBody(req);
+        push.store.remove(String(body.id || ''));
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/push/test') {
+        if (!auth(req, res)) return;
+        if (!push) { sendJson(res, 501, { ok: false, error: '推送未启用' }); return; }
+        const results = await push.store.notifyAll(push.vapidJwk, { kind: 'test', title: 'DeepSeek Harness', body: '推送测试成功 ✅' });
+        sendJson(res, 200, { ok: true, results });
+        return;
+      }
       if (req.method === 'POST' && url.pathname === '/api/dsh-credentials') {
         if (!auth(req, res)) return;
         const body = await readBody(req);

@@ -5,6 +5,7 @@ config.json
 # ---- è¿è¡Œæ—¶çŠ¶æ€ ----
 history.json
 sessions.json
+push-subscriptions.json
 
 # ---- ä¾èµ–ä¸æ„å»º ----
 node_modules/
@@ -16,7 +17,7 @@ cloud-relay/.dev.vars
 cloud-relay/.wrangler/
 .wrangler/
 
-# ---- ÊÓÆµÖÆ×÷£¨Remotion£©----
+# ---- è§†é¢‘åˆ¶ä½œï¼ˆRemotionï¼‰----
 video/remotion/node_modules/
 video/remotion/out/
 video/remotion/.remotion/

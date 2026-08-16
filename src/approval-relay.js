@@ -6,7 +6,7 @@
 // 零第三方依赖：Node 22+ 全局 WebSocket；失败静默指数退避重连（1s→30s 封顶）。
 import { fetchRpc, eventToStreamItem, isoTime } from './dsh-utils.js';
 
-export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) {
+export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080', onNotify } = {}) {
   const pending = new Map(); // approvalId -> {rpcId, sessionId, approvalId, toolName, callId, reason, receivedAt}
   const MAX_PENDING = 50; // 上限 50 条，先进先出淘汰
   let state = 'stopped';
@@ -127,6 +127,7 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
         receivedAt: new Date().toISOString(),
       });
       evictOldest();
+      try { onNotify && onNotify({ kind: 'question', sessionId: String(p.sessionId || ''), questions: Array.isArray(p.questions) ? p.questions : [] }); } catch { /* 通知失败不阻断 */ }
       return;
     }
     const isApproval = frame.method === 'approval/requested' || (p && p.type === 'approval/requested');
@@ -146,6 +147,7 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
       receivedAt: new Date().toISOString(),
     });
     evictOldest();
+    try { onNotify && onNotify({ kind: 'approval', sessionId: String(p.sessionId || ''), toolName: p.toolName, reason: p.reason }); } catch { /* 通知失败不阻断 */ }
   }
 
   // 待审批/待回答列表，最新在前（Map 插入序 = 接收序，反转即最新在前）

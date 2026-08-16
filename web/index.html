@@ -1215,6 +1215,10 @@ svg { flex: none; }
             <div class="set-l"><div class="set-t">打开配置文件</div><div class="set-s">在电脑端打开 DSH 配置文件</div></div>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
+          <div class="set-row">
+            <div class="set-l"><div class="set-t">推送通知</div><div class="set-s" id="pushStatus">任务完成/需批准时通知手机</div></div>
+            <button class="set-btn sm" id="pushBtn" type="button" style="flex:none;padding:7px 12px;border:1px solid var(--border-strong);border-radius:9px;font-size:12.5px">启用</button>
+          </div>
         </div>
         <div class="sec-title" style="margin-top:18px"><span>模型</span></div>
         <div class="settings-card">
@@ -3659,6 +3663,52 @@ svg { flex: none; }
     applyLocale();
   }
 
+  // ============ 推送通知（Web Push，PWA） ============
+  function b64urlToU8(s) {
+    var bin = atob(String(s).replace(/-/g, '+').replace(/_/g, '/'));
+    var arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+  }
+  var pushEnabled = false;
+  var pushBtnBound = false;
+  async function setupPush() {
+    var btn = $('pushBtn');
+    if (!btn || pushBtnBound) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      $('pushStatus').textContent = '此浏览器不支持推送（需 HTTPS/PWA）';
+      btn.textContent = '不支持';
+      btn.disabled = true;
+      return;
+    }
+    try { await navigator.serviceWorker.register('sw.js'); } catch (e) { $('pushStatus').textContent = 'SW 注册失败'; return; }
+    var reg = null;
+    try { reg = await navigator.serviceWorker.ready; } catch (e) { return; }
+    var sub = await reg.pushManager.getSubscription().catch(function () { return null; });
+    if (sub) { pushEnabled = true; btn.textContent = '已启用'; $('pushStatus').textContent = '已开启：任务完成/需批准时通知'; }
+    btn.addEventListener('click', async function () {
+      if (pushEnabled) {
+        try { var cur = await reg.pushManager.getSubscription(); if (cur) await cur.unsubscribe(); } catch (e) {}
+        pushEnabled = false; btn.textContent = '启用';
+        $('pushStatus').textContent = '已关闭';
+        toast(state.locale === 'en' ? 'Push disabled' : '已关闭推送');
+        return;
+      }
+      var perm = await Notification.requestPermission();
+      if (perm !== 'granted') { toast('请在浏览器设置中允许通知权限', true); return; }
+      try {
+        var v = await api('/api/push/vapid', { timeoutMs: 6000 });
+        var sub2 = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToU8(v.publicKey) });
+        await api('/api/push/register', { method: 'POST', body: JSON.stringify({ subscription: JSON.parse(JSON.stringify(sub2)), deviceLabel: '手机' }), timeoutMs: 8000 });
+        pushEnabled = true; btn.textContent = '已启用';
+        $('pushStatus').textContent = '已开启：任务完成/需批准时通知';
+        toast(state.locale === 'en' ? 'Push enabled' : '推送已启用');
+        try { await api('/api/push/test', { method: 'POST', body: JSON.stringify({}), timeoutMs: 8000 }); } catch (e) {}
+      } catch (e) { toast('启用失败: ' + e.message, true); }
+    });
+    pushBtnBound = true;
+  }
+
   // ============ DSH 设置（对标 DSH 桌面设置面板：Enter行为/语言/权限默认/提供方） ============
   var dshSettings = null;
   function segSet(el, v) {
@@ -4041,6 +4091,7 @@ svg { flex: none; }
       connect();
     }
     applyLocale(); // 启动即应用已保存的界面语言
+    setupPush();   // 推送通知（PWA Web Push）
   }
   function autoGrow(el) {
     el.style.height = 'auto';

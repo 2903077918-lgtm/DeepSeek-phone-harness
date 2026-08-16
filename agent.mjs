@@ -15,6 +15,7 @@ import { createExecutor } from './src/executor.js';
 import { createLanTransport } from './src/transport-lan.js';
 import { createCloudPoller } from './src/cloud-poller.mjs';
 import { ensureE2EEKey, registerDevice, restBaseFromWs } from './src/cloud-register.mjs';
+import { ensureVapidKeys, createPushStore } from './src/web-push.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = __dirname;
@@ -33,9 +34,21 @@ const queue = createQueue();
 // 云端模式不监听 LAN；executor 仍可 headless 执行（远端任务进来本地跑）
 const executor = createExecutor({ mode: mode === 'cloud' ? 'lan' : mode });
 
+// ---- Web Push 推送（审批/提问/任务完成 → 手机通知）----
+const CONFIG_PATH = path.join(ROOT_DIR, 'config.json');
+const pushKeys = ensureVapidKeys(config, CONFIG_PATH);
+const pushStore = createPushStore(path.join(ROOT_DIR, 'push-subscriptions.json'));
+const push = {
+  publicKeyB64: (() => { const x = pushKeys.vapidPublic; return Buffer.from([4, ...Buffer.from(x.x, 'base64url'), ...Buffer.from(x.y, 'base64url')]).toString('base64url'); })(),
+  vapidJwk: pushKeys.vapidPublic, // notifyAll 只用公钥做 Authorization；私钥在 sendPush 内部用
+  store: pushStore,
+  notify: (payload) => pushStore.notifyAll(pushKeys.vapidPublic, { ...payload, title: 'DeepSeek Harness', at: Date.now() }),
+};
+executor.setPushNotifier({ notify: push.notify });
+
 // ---- LAN 通道（lan / both；cloud 不监听 LAN）----
 if (mode !== 'cloud') {
-  const lan = createLanTransport({ config, rootDir: ROOT_DIR, executor, history, queue });
+  const lan = createLanTransport({ config, rootDir: ROOT_DIR, executor, history, queue, push });
   lan.start();
   console.log('[deepseekharness-relay] LAN 已启动（8788）');
 }
