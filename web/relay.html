@@ -21,13 +21,14 @@
   --text: #F2F2F2;
   --text-2: #9A9A9A;
   --text-3: #A6A6A6;
-  --blue: #3E96FF;
-  --blue-2: #5FA7FF;
-  --blue-soft: rgba(95, 167, 255, 0.16);
-  --green: #6BBF59;
-  --green-soft: rgba(107, 191, 89, 0.14);
-  --red: #D84F4F;
-  --red-soft: rgba(216, 79, 79, 0.16);
+  /* 单一强调色：DSH 桌面端 #4070E0（仅用于激活/选中/交互态） */
+  --blue: #4070E0;
+  --blue-2: #7B9BF2;
+  --blue-soft: rgba(64, 112, 224, 0.18);
+  --green: #3E9B6F;
+  --green-soft: rgba(62, 155, 111, 0.14);
+  --red: #E05C5C;
+  --red-soft: rgba(224, 92, 92, 0.16);
   --gold: #C9A227;
   --radius: 18px;
   --radius-sm: 12px;
@@ -49,8 +50,8 @@
   --blue: #4070E0;
   --blue-2: #5B84EA;
   --blue-soft: rgba(64, 112, 224, 0.10);
-  --green: #16A34A;
-  --green-soft: rgba(22, 163, 74, 0.12);
+  --green: #2E9E6E;
+  --green-soft: rgba(46, 158, 110, 0.12);
   --red: #DC2626;
   --red-soft: rgba(220, 38, 38, 0.12);
   --gold: #B7791F;
@@ -69,8 +70,8 @@
     --blue: #4070E0;
     --blue-2: #5B84EA;
     --blue-soft: rgba(64, 112, 224, 0.10);
-    --green: #16A34A;
-    --green-soft: rgba(22, 163, 74, 0.12);
+    --green: #2E9E6E;
+    --green-soft: rgba(46, 158, 110, 0.12);
     --gold: #B7791F;
   }
 }
@@ -131,9 +132,9 @@ svg { flex: none; }
 .drawer-title-row { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; }
 .drawer-title-row .t { display: block; }
 .ses-status { flex: none; width: 8px; height: 8px; border-radius: 50%; }
-.ses-status.run { background: var(--blue); box-shadow: 0 0 0 0 rgba(62,150,255,0.5); animation: ses-pulse 1.6s infinite; }
+.ses-status.run { background: var(--blue); box-shadow: 0 0 0 0 rgba(64,112,224,0.5); animation: ses-pulse 1.6s infinite; }
 .ses-status.idle { background: var(--text-3); }
-@keyframes ses-pulse { 0% { box-shadow: 0 0 0 0 rgba(62,150,255,0.5); } 70% { box-shadow: 0 0 0 6px rgba(62,150,255,0); } 100% { box-shadow: 0 0 0 0 rgba(62,150,255,0); } }
+@keyframes ses-pulse { 0% { box-shadow: 0 0 0 0 rgba(64,112,224,0.5); } 70% { box-shadow: 0 0 0 6px rgba(62,150,255,0); } 100% { box-shadow: 0 0 0 0 rgba(62,150,255,0); } }
 .drawer-foot { padding: 10px; border-top: 1px solid rgba(255,255,255,0.08); }
 .drawer-foot .item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 9px; color: var(--text-2); font-size: 13px; }
 .drawer-foot .item:hover { background: rgba(255,255,255,0.06); color: var(--text); }
@@ -151,11 +152,12 @@ svg { flex: none; }
 .new-chat {
   display: flex; align-items: center; justify-content: center; gap: 7px;
   width: 100%; padding: 11px 12px; border-radius: 10px;
-  background: var(--blue); color: #fff; font-size: 14px; font-weight: 600;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.10);
-  transition: opacity 0.15s, transform 0.08s;
+  background: var(--bg-el); color: var(--text); font-size: 14px; font-weight: 600;
+  border: 1px solid var(--border-strong);
+  transition: opacity 0.15s, transform 0.08s, background 0.1s;
 }
-.new-chat:active { transform: scale(0.98); opacity: 0.92; }
+.new-chat:hover { background: var(--bg-sel); }
+.new-chat:active { transform: scale(0.98); }
 .drawer-ws { padding: 2px 10px 6px; }
 .sec-label { font-size: 11px; font-weight: 700; color: var(--text-3); letter-spacing: 0.6px; padding: 6px 8px 6px; }
 .drawer-ws .sec-label { padding-top: 0; }
@@ -215,18 +217,22 @@ svg { flex: none; }
 .chip:hover { border-color: var(--border-strong); color: var(--text); background: var(--bg-sel); }
 .chip svg { color: var(--text-3); }
 .chip .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); flex: none; }
-.chip .conn-dot.on { background: var(--green); }
+.chip .conn-dot.on { background: var(--blue-2); }
 .chip .conn-dot.off { background: var(--red); }
 .chip .conn-dot.na { background: var(--text-3); }
 .chip > span:not(.conn-dot):not(.chip-effort) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .chip-effort { color: var(--text-3); margin-left: 2px; }
-.chip.chip-ws { font-weight: 600; }
-.chip.chip-preset { color: var(--gold); }
-.chip.chip-preset svg { color: var(--gold); }
-.chip.chip-perm.ch-full { color: var(--green); border-color: rgba(107,191,89,0.4); }
-.chip.chip-perm.ch-full svg { color: var(--green); }
-.chip.chip-model { color: var(--blue-2); }
-.chip.chip-model svg { color: var(--blue-2); }
+.chip.chip-ws { font-weight: 600; color: var(--text); }
+.chip.chip-ws svg { color: var(--text-2); }
+/* 对齐 DSH 桌面：模式/权限/模型胶囊均为中性灰，强调色只留给激活/选中态 */
+.chip.chip-preset { color: var(--text-2); }
+.chip.chip-preset svg { color: var(--text-3); }
+.chip.chip-perm { color: var(--text-2); }
+.chip.chip-perm svg { color: var(--text-3); }
+.chip.chip-perm.ch-full { color: var(--text); border-color: var(--border-strong); font-weight: 600; }
+.chip.chip-perm.ch-full svg { color: var(--text-2); }
+.chip.chip-model { color: var(--text-2); }
+.chip.chip-model svg { color: var(--text-3); }
 
 /* ============ 面板 ============ */
 .pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -235,7 +241,7 @@ svg { flex: none; }
 .connect-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; }
 .connect-card { width: 100%; max-width: 380px; }
 .connect-hero { text-align: center; margin-bottom: 26px; }
-.connect-hero .whale-lg { width: 56px; height: 56px; color: var(--gold); margin: 0 auto 12px; }
+.connect-hero .whale-lg { width: 56px; height: 56px; color: var(--blue-2); margin: 0 auto 12px; }
 .connect-hero h1 { font-size: 20px; font-weight: 800; }
 .connect-hero p { color: var(--text-2); font-size: 13px; margin-top: 6px; line-height: 1.6; }
 .field { margin-bottom: 14px; }
@@ -324,7 +330,7 @@ svg { flex: none; }
   border: 1px solid var(--border-strong); color: var(--text-2);
 }
 .traj-row.asst .tr-type { color: var(--blue-2); border-color: var(--blue); background: var(--blue-soft); }
-.traj-row.tool .tr-type { color: var(--green); border-color: rgba(22,163,74,0.4); background: var(--green-soft); }
+.traj-row.tool .tr-type { color: var(--text-2); border-color: var(--border-strong); background: var(--bg-sel); }
 .traj-row .tr-t { flex: 1; min-width: 0; color: var(--text); word-break: break-all; }
 .traj-row .tr-t .tr-name { color: var(--text-2); }
 .traj-row .tr-meta { flex: none; font-size: 10px; color: var(--text-3); font-family: var(--mono); }
@@ -338,7 +344,7 @@ svg { flex: none; }
   border-radius: var(--radius-sm);
 }
 .conn-banner-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex: none; }
-.conn-banner-dot.on { background: var(--green); }
+.conn-banner-dot.on { background: var(--blue-2); }
 .conn-banner-dot.off { background: var(--red); }
 .conn-banner-dot.na { background: var(--text-3); }
 .conn-banner-text { flex: 1; font-size: 12.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -375,7 +381,7 @@ svg { flex: none; }
 .asst-body code { font-family: var(--mono); font-size: 12.5px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 5px; padding: 1px 5px; color: #D7E0EA; }
 .asst-body pre { background: var(--bg-sel); border: 1px solid var(--border-strong); border-radius: 8px; padding: 10px 12px; margin: 6px 0 10px; overflow-x: auto; }
 .asst-body pre code { background: none; border: none; padding: 0; font-size: 12px; line-height: 1.6; display: block; white-space: pre-wrap; word-break: break-word; color: var(--text); }
-.asst-body blockquote { margin: 6px 0; padding: 2px 12px; border-left: 3px solid var(--blue-2); background: rgba(95,167,255,0.08); color: var(--text-2); }
+.asst-body blockquote { margin: 6px 0; padding: 2px 12px; border-left: 3px solid var(--blue-2); background: rgba(64,112,224,0.08); color: var(--text-2); }
 .md-table-wrap { overflow-x: auto; margin: 6px 0 10px; border: 1px solid var(--border); border-radius: 8px; }
 .md-table { border-collapse: collapse; width: 100%; font-size: 12.5px; line-height: 1.5; min-width: 100%; }
 .md-table td { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); padding: 6px 10px; color: var(--text); vertical-align: top; }
@@ -395,33 +401,33 @@ svg { flex: none; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tool-line.run { color: #C6D2FF; }
-.tool-line.done { color: var(--green); }
+.tool-line.done { color: var(--text-2); }
 /* 任务清单面板（todo_write 分步） */
 .todo-panel { flex: none; border-bottom: 1px solid var(--border); background: var(--bg-drawer); padding: 8px 14px; }
 .todo-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.todo-title { font-size: 12px; font-weight: 700; color: var(--green); }
+.todo-title { font-size: 12px; font-weight: 700; color: var(--blue-2); }
 .todo-count { margin-left: auto; font-size: 11px; color: var(--text-2); }
 .todo-list { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
 .todo-item { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; font-size: 12.5px; }
-.todo-item.running { background: rgba(62,150,255,0.08); }
+.todo-item.running { background: var(--blue-soft); }
 .todo-item.done { opacity: 0.6; }
 .todo-ic { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-2); }
 .todo-item.running .todo-ic { border-color: var(--blue); color: var(--blue-2); }
-.todo-item.done .todo-ic { background: var(--green); border-color: var(--green); color: #07130a; }
+.todo-item.done .todo-ic { background: var(--bg-sel); border-color: var(--border); color: var(--text-2); }
 .todo-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .todo-status { flex: none; font-size: 10px; color: var(--text-3); }
 .todo-item.running .todo-status { color: var(--blue-2); }
-.todo-item.done .todo-status { color: var(--green); }
+.todo-item.done .todo-status { color: var(--text-3); }
 
 /* 分步任务卡片（对标 DSH step 逐项执行） */
 .step-list { display: flex; flex-direction: column; gap: 8px; }
 .step-card { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: rgba(255,255,255,0.03); }
-.step-card.run { border-color: rgba(62,150,255,0.5); box-shadow: 0 0 0 1px rgba(62,150,255,0.15); }
+.step-card.run { border-color: rgba(64,112,224,0.5); box-shadow: 0 0 0 1px rgba(62,150,255,0.15); }
 .step-card .step-head { display: flex; align-items: center; gap: 8px; padding: 7px 11px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
 .step-card .step-no { font-size: 12px; font-weight: 700; color: var(--text); }
 .step-card .step-status { margin-left: auto; font-size: 10.5px; color: var(--text-2); display: inline-flex; align-items: center; gap: 5px; }
 .step-card.run .step-status { color: var(--blue-2); }
-.step-card.done .step-status { color: var(--green); }
+.step-card.done .step-status { color: var(--text-2); }
 .step-card .asst-body { padding: 8px 11px 6px; font-size: 13.5px; }
 .step-card .tool-stack { margin: 4px 8px 8px; }
 
@@ -436,7 +442,7 @@ svg { flex: none; }
 .tool-card.err .tc-ic { color: var(--red); }
 .tool-card .tc-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tool-card .tc-status { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text-2); }
-.tool-card .tc-status .tc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.tool-card .tc-status .tc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
 .tool-card.err .tc-status .tc-dot { background: var(--red); }
 .tool-card .tc-status.run { color: var(--blue-2); }
 .tool-card .tc-args { padding: 0 10px 8px 34px; font-family: var(--mono); font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -448,7 +454,7 @@ svg { flex: none; }
 .tool-card .tc-detail pre { font-family: var(--mono); font-size: 11px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow: auto; background: rgba(255,255,255,0.04); border-radius: 6px; padding: 6px 8px; margin: 0; }
 .tool-card.err .tc-detail pre { color: var(--red); }
 .tool-card-wrap { display: block; }
-.tool-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
+.tool-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); flex: none; }
 .tool-stack { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
 .stream-cursor {
   display: inline-block; width: 7px; height: 14px; margin-left: 2px;
@@ -456,9 +462,9 @@ svg { flex: none; }
   animation: blink 1s step-end infinite;
 }
 @keyframes blink { 50% { opacity: 0; } }
-.spin { display: inline-block; width: 9px; height: 9px; border: 1.5px solid rgba(95,167,255,0.3); border-top-color: var(--blue-2); border-radius: 50%; animation: spin 0.8s linear infinite; flex: none; }
+.spin { display: inline-block; width: 9px; height: 9px; border: 1.5px solid rgba(64,112,224,0.3); border-top-color: var(--blue-2); border-radius: 50%; animation: spin 0.8s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.appr-card { border: 1px solid rgba(95,167,255,0.45); border-radius: var(--radius-sm); background: var(--bg-el); padding: 13px; }
+.appr-card { border: 1px solid rgba(64,112,224,0.45); border-radius: var(--radius-sm); background: var(--bg-el); padding: 13px; }
 .appr-card .t { font-weight: 700; font-size: 13.5px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
 .appr-card .r { font-size: 12.5px; color: var(--text-2); margin-bottom: 10px; word-break: break-word; }
 .appr-card .row { display: flex; gap: 8px; }
@@ -468,11 +474,11 @@ svg { flex: none; }
 .appr-card .q-detail { font-size: 12px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; max-height: 140px; overflow: auto; }
 .appr-card .q-opts { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .appr-card .q-opt { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-sel); color: var(--text); cursor: pointer; font-size: 13px; }
-.appr-card .q-opt.on { border-color: var(--blue); background: rgba(62,150,255,0.12); }
-.appr-card .q-opt.primary.on { border-color: var(--gold); background: rgba(201,162,39,0.12); }
+.appr-card .q-opt.on { border-color: var(--blue); background: rgba(64,112,224,0.12); }
+.appr-card .q-opt.primary.on { border-color: var(--blue); background: rgba(64,112,224,0.12); }
 .appr-card .q-opt-num { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-2); }
 .appr-card .q-opt.on .q-opt-num { background: var(--blue); border-color: var(--blue); color: #fff; }
-.appr-card .q-opt.primary.on .q-opt-num { background: var(--gold); border-color: var(--gold); color: #191919; }
+.appr-card .q-opt.primary.on .q-opt-num { background: var(--blue); border-color: var(--blue); color: #fff; }
 .appr-card .q-opt-body { display: flex; flex-direction: column; min-width: 0; }
 .appr-card .q-opt-label { font-weight: 600; }
 .appr-card .q-opt-desc { font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
@@ -493,7 +499,7 @@ svg { flex: none; }
 .task-item { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-el); margin-bottom: 10px; overflow: hidden; }
 .task-item .task-head { display: flex; align-items: center; gap: 10px; padding: 12px 13px; cursor: pointer; }
 .task-item .task-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); }
-.task-item .task-dot.ok { background: var(--green); }
+.task-item .task-dot.ok { background: var(--text-3); }
 .task-item .task-dot.err { background: var(--red); }
 .task-item .task-dot.run { background: var(--blue); }
 .task-item .task-main { flex: 1; min-width: 0; }
@@ -516,7 +522,7 @@ svg { flex: none; }
 .dsh-empty .big { font-size: 25px; font-weight: 800; letter-spacing: 0.5px; }
 .dsh-empty .sub { margin-top: 10px; font-size: 14px; color: var(--text-2); }
 .dsh-empty .empty-chips { display: flex; justify-content: center; gap: 8px; margin-top: 28px; flex-wrap: wrap; }
-.dsh-empty .empty-chips .chip { font-size: 12px; padding: 6px 12px; }
+.dsh-empty .empty-chips .chip { font-size: 12px; padding: 6px 12px; cursor: pointer; }
 
 /* composer */
 .inputbar { border-top: 1px solid var(--border); background: var(--bg); padding: 8px 12px calc(var(--safe-bottom) + 8px); flex: none; }
@@ -524,7 +530,7 @@ svg { flex: none; }
 .chat-stat { flex: none; display: flex; align-items: center; gap: 12px; padding: 4px 14px calc(3px + env(safe-area-inset-bottom, 0px)); font-size: 10px; color: var(--text-3); background: var(--bg-el); border-top: 1px solid var(--border); overflow-x: auto; white-space: nowrap; font-family: var(--mono); }
 .chat-stat .st-item { display: inline-flex; align-items: center; gap: 4px; }
 .chat-stat .st-ic { display: inline-grid; place-items: center; color: var(--text-3); }
-.chat-stat .st-cache { color: var(--gold); }
+.chat-stat .st-cache { color: var(--text-2); }
 .chat-stat .st-run { color: var(--blue-2); }
 .chat-stat .st-warn { color: var(--red); }
 .attach-row { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; -webkit-overflow-scrolling: touch; }
@@ -552,7 +558,7 @@ svg { flex: none; }
 .composer textarea::placeholder { color: var(--text-3); }
 .composer .send {
   flex: none; width: 34px; height: 34px; border-radius: 50%;
-  background: var(--blue); color: #0D0F13;
+  background: var(--blue); color: #fff;
   display: grid; place-items: center; transition: transform 0.08s, opacity 0.15s;
 }
 .composer .send:active { transform: scale(0.9); }
@@ -568,15 +574,15 @@ svg { flex: none; }
 .composer-models-hint { font-size: 11px; color: var(--text-3); white-space: nowrap; }
 .model-pill {
   flex: none; display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--blue-2); border: 1px solid rgba(62,150,255,0.35);
-  background: rgba(62,150,255,0.08); border-radius: 999px; padding: 6px 12px;
+  font-size: 12px; color: var(--blue-2); border: 1px solid rgba(64,112,224,0.35);
+  background: rgba(64,112,224,0.08); border-radius: 999px; padding: 6px 12px;
 }
 .model-pill:active { transform: scale(0.97); }
 .model-pill .mc-chev { color: var(--text-3); }
-.model-pill.preset-pill { color: var(--gold); border-color: rgba(201,162,39,0.4); background: rgba(201,162,39,0.08); }
+.model-pill.preset-pill { color: var(--text-2); border-color: var(--border-strong); background: var(--bg-sel); }
 .model-pill.stat-pill { cursor: default; }
 .model-pill.perm-pill { color: var(--text-2); border-color: var(--border); background: rgba(255,255,255,0.04); }
-.model-pill.perm-pill.full { color: var(--green); border-color: rgba(107,191,89,0.4); background: rgba(107,191,89,0.08); }
+.model-pill.perm-pill.full { color: var(--text); border-color: var(--border-strong); background: var(--bg-sel); }
 .model-pill.appr-pill { color: var(--red); border-color: rgba(216,79,79,0.4); background: rgba(216,79,79,0.06); }
 .model-pill.appr-pill.pending { color: #fff; border-color: var(--red); background: var(--red); animation: appr-blink 1.4s infinite; }
 @keyframes appr-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
@@ -585,6 +591,7 @@ svg { flex: none; }
 .sheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; }
 .sheet-title { font-size: 15px; font-weight: 700; }
 .sheet-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 14px calc(16px + var(--safe-bottom)); }
+.perm-note { flex: none; padding: 0 18px calc(14px + var(--safe-bottom)); font-size: 11.5px; line-height: 1.6; color: var(--text-3); border-top: 1px solid var(--border); padding-top: 12px; }
 .model-group { margin-top: 14px; }
 .model-group .gname { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .model-item {
@@ -592,7 +599,7 @@ svg { flex: none; }
   padding: 11px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
   background: var(--bg-el); margin-bottom: 6px; color: var(--text); font-size: 13.5px;
 }
-.model-item.on { border-color: var(--blue); background: rgba(62,150,255,0.1); }
+.model-item.on { border-color: var(--blue); background: rgba(64,112,224,0.10); }
 .model-item .m-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-item .m-desc { font-size: 11px; color: var(--text-2); }
 .model-item .m-check { flex: none; color: var(--blue-2); }
@@ -918,6 +925,15 @@ svg { flex: none; }
       <div class="sheet">
         <div class="sheet-head"><div class="sheet-title">选择模式</div><button class="icon-btn" id="presetClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
         <div class="sheet-body" id="presetList"></div>
+      </div>
+    </div>
+
+    <!-- 权限面板（展示当前会话权限等级；切换在电脑端 DSH 进行） -->
+    <div class="sheet-mask hidden" id="permMask">
+      <div class="sheet">
+        <div class="sheet-head"><div class="sheet-title">权限</div><button class="icon-btn" id="permClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+        <div class="sheet-body" id="permList"></div>
+        <div class="perm-note" id="permNote"></div>
       </div>
     </div>
 
@@ -1318,6 +1334,7 @@ svg { flex: none; }
     state.wsIndex = i;
     state.currentWs = ws;
     state.currentSess = null;
+    state.taskStat = { input: 0, output: 0, cacheRead: 0 }; // 切换工作区清空统计，避免显示上个会话状态
     save('wsId', ws.workspaceId); // 记忆上次工作区，下次连接直接进对话页
     $('wsLabel').textContent = ws.title || ws.path;
     $('chatTitle').textContent = ws.title || ws.path;
@@ -1455,6 +1472,7 @@ svg { flex: none; }
   // ============ 对话 ============
   async function openSession(sess) {
     state.currentSess = sess;
+    state.taskStat = { input: 0, output: 0, cacheRead: 0 }; // 切换会话清空任务级统计，只显示当前会话
     $('chatTitle').textContent = sess.title || sess.cwd || '对话';
     $('chatSub').textContent = String(sess.cwd || '');
     $('timeline').textContent = '';
@@ -1502,7 +1520,7 @@ svg { flex: none; }
       var perm = '';
       if (sess && sess.permissions && sess.permissions.currentValue) {
         var pv = sess.permissions.currentValue;
-        perm = '<span class="chip chip-perm' + (pv === 'danger-full-access' ? ' ch-full' : '') + '">' + esc(permNameMap[pv] || pv) + '</span>';
+        perm = '<button type="button" class="chip chip-perm' + (pv === 'danger-full-access' ? ' ch-full' : '') + '" title="查看权限">' + esc(permNameMap[pv] || pv) + '</button>';
       }
       var mdlEl = $('modelBtnLabel'), mdl = (mdlEl && mdlEl.textContent !== '模型') ? mdlEl.textContent : 'DeepSeek V4 Flash';
       var preEl = $('presetBtnLabel'), pre = (preEl && preEl.textContent) ? preEl.textContent : '标准模式';
@@ -1511,11 +1529,20 @@ svg { flex: none; }
         '<div class="big">探索未至之境</div>' +
         '<div class="sub">描述你想要构建的内容</div>' +
         '<div class="empty-chips">' +
-        '<span class="chip chip-preset">' + esc(pre) + '</span>' +
+        '<button type="button" class="chip chip-preset" title="点击切换模式">' + esc(pre) + '</button>' +
         perm +
-        '<span class="chip chip-model">' + esc(mdl) + '</span>' +
+        '<button type="button" class="chip chip-model" title="点击切换模型">' + esc(mdl) + '</button>' +
         '</div>';
+      // 空状态胶囊可点击：模式 / 权限 / 模型
+      var cP = e.querySelector('.empty-chips .chip-preset');
+      if (cP) cP.addEventListener('click', openPresetSheet);
+      var cPM = e.querySelector('.empty-chips .chip-perm');
+      if (cPM) cPM.addEventListener('click', openPermSheet);
+      var cM = e.querySelector('.empty-chips .chip-model');
+      if (cM) cM.addEventListener('click', openModelSheet);
       tl.appendChild(e);
+      renderTaskStat();  // 空状态也刷新统计条：当前会话为 null → 隐藏，不残留上个会话数据
+      renderPermPill();
       return;
     }
     state.msgs.forEach(function (m) { tl.appendChild(msgEl(m)); });
@@ -1628,9 +1655,9 @@ svg { flex: none; }
       }
       $('permPillLabel').textContent = pl;
     }
-    // 审批：当前会话有待审批/提问 → 显示"需要批准"（高亮）
+    // 审批：当前会话有待审批/提问 → 显示"需要批准"（高亮）；无会话（新会话欢迎页）不显示
     var mine = state.approvals.filter(function (a) {
-      return !sess || !a.sessionId || a.sessionId === sess.sessionId;
+      return sess && (!a.sessionId || a.sessionId === sess.sessionId);
     });
     if (apprEl) {
       if (mine.length) {
@@ -2013,6 +2040,30 @@ svg { flex: none; }
       } catch (e) { toast('新建会话失败：' + e.message, true); }
     }
     $('presetMask').classList.add('hidden');
+  }
+  // ============ 权限面板（对标 DSH：三档权限说明，当前会话高亮；切换在电脑端） ============
+  var permDefs = [
+    { v: 'read-only', n: '只读', d: '只能查看，不能修改文件或执行命令' },
+    { v: 'workspace-write', n: '工作区写入', d: '可读写当前工作区内的文件' },
+    { v: 'danger-full-access', n: '完全访问', d: '可执行任意命令、读写任意位置' },
+  ];
+  function openPermSheet() {
+    var list = $('permList');
+    list.textContent = '';
+    var sess = state.currentSess;
+    var cur = sess && sess.permissions && sess.permissions.currentValue;
+    permDefs.forEach(function (pd) {
+      var it = document.createElement('div');
+      it.className = 'model-item' + (cur === pd.v ? ' on' : '');
+      it.innerHTML = '<span class="m-name">' + pd.n + '</span>' +
+        '<span class="m-desc">' + pd.d + '</span>' +
+        (cur === pd.v ? '<span class="m-check">&#10003;</span>' : '');
+      list.appendChild(it);
+    });
+    $('permNote').textContent = cur
+      ? '当前会话为「' + (permNameMap[cur] || cur) + '」，由电脑端 DSH 会话决定；切换权限请在电脑端进行。'
+      : '当前没有会话。新建会话后，此处显示该会话的权限等级（由电脑端 DSH 决定）。';
+    $('permMask').classList.remove('hidden');
   }
   function openModelSheet() {
     var list = $('modelList');
@@ -2433,9 +2484,9 @@ svg { flex: none; }
     // 移除旧的审批卡（只清当前动态加的，不碰历史消息）
     tl.querySelectorAll('.appr-card').forEach(function (c) { c.remove(); });
     if (!state.approvals.length) return;
-    // 只显示与当前会话相关的审批
+    // 只显示与当前会话相关的审批；无会话（新会话欢迎页）不渲染，避免污染空状态
     var mine = state.approvals.filter(function (a) {
-      return !state.currentSess || !a.sessionId || a.sessionId === state.currentSess.sessionId;
+      return state.currentSess && (!a.sessionId || a.sessionId === state.currentSess.sessionId);
     });
     if (!mine.length) return;
     mine.forEach(function (a) {
@@ -3071,6 +3122,7 @@ svg { flex: none; }
       if (!state.currentWs) { toast('请先选择工作区', true); return; }
       state.currentSess = null;
       state.msgs = [];
+      state.taskStat = { input: 0, output: 0, cacheRead: 0 }; // 新会话清空统计，空状态不显示旧会话数据
       $('chatTitle').textContent = '新对话';
       $('chatSub').textContent = state.currentWs.path || '';
       $('timeline').textContent = '';
@@ -3093,6 +3145,10 @@ svg { flex: none; }
     $('presetBtn').addEventListener('click', openPresetSheet);
     $('presetClose').addEventListener('click', function () { $('presetMask').classList.add('hidden'); });
     $('presetMask').addEventListener('click', function (e) { if (e.target === $('presetMask')) $('presetMask').classList.add('hidden'); });
+    // 权限面板
+    $('permPill').addEventListener('click', openPermSheet);
+    $('permClose').addEventListener('click', function () { $('permMask').classList.add('hidden'); });
+    $('permMask').addEventListener('click', function (e) { if (e.target === $('permMask')) $('permMask').classList.add('hidden'); });
     // 图片附件
     $('addBtn').addEventListener('click', function () { $('fileInput').click(); });
     $('fileInput').addEventListener('change', async function () {
