@@ -13,9 +13,32 @@ import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { PORT, HOST, AGENT_VERSION } from './config.js';
 import { createApprovalRelay } from './approval-relay.js';
+
+// ---- 图片 OCR（Windows 自带 OCR：免费、本地、不耗 token；输出逐行文本供前端组装 markdown）----
+function runOcr(scriptPath, imagePath) {
+  return new Promise((resolve) => {
+    const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, imagePath], {
+      windowsHide: true,
+      env: { ...process.env },
+    });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', (d) => { stdout += d.toString(); });
+    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    child.on('close', (code) => {
+      const text = stdout.trim();
+      if (code !== 0 || !text || text.startsWith('ERR_')) {
+        resolve({ ok: false, error: (stderr || text || 'OCR 无输出').slice(0, 300) });
+      } else {
+        resolve({ ok: true, text });
+      }
+    });
+    child.on('error', (e) => resolve({ ok: false, error: String(e) }));
+  });
+}
 
 // ---- 终端命令执行器（/api/shell 用，codex-relay workspace-ssh-terminal 的手机版）----
 // 每个命令独立进程（cmd + chcp 65001 输出 UTF-8），输出按序缓存，UI 增量轮询；
@@ -405,7 +428,31 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); }
         return;
       }
-      // ---- 终端（codex-relay workspace-ssh-terminal 的手机版，无 SSH 直接本地执行）----
+      // ---- 图片 OCR → Markdown（Windows 自带 OCR：免费、本地、不耗 token）----
+      // POST /api/ocr {imageBase64, ext?} → {ok, text}  文本按行返回，前端可整理为 markdown
+      if (req.method === 'POST' && url.pathname === '/api/ocr') {
+        if (!auth(req, res)) return;
+        const body = await readBody(req);
+        const b64 = String(body.imageBase64 || '').trim();
+        if (!b64) { sendJson(res, 400, { ok: false, error: 'imageBase64 不能为空' }); return; }
+        const tmpDir = path.join(os.tmpdir(), 'ph-ocr');
+        try {
+          await import('node:fs/promises').then((m) => m.mkdir(tmpDir, { recursive: true }));
+          const fname = 'ocr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.png';
+          const fpath = path.join(tmpDir, fname);
+          const buf = Buffer.from(b64, 'base64');
+          if (!buf.length || buf.length > 15 * 1024 * 1024) { sendJson(res, 400, { ok: false, error: '图片数据无效或过大' }); return; }
+          await import('node:fs/promises').then((m) => m.writeFile(fpath, buf));
+          const script = path.join(rootDir, 'src', 'ocr.ps1');
+          const out = await runOcr(script, fpath);
+          await import('node:fs/promises').then((m) => m.unlink(fpath).catch(() => {}));
+          if (!out.ok) { sendJson(res, 500, { ok: false, error: out.error }); return; }
+          sendJson(res, 200, { ok: true, text: out.text });
+        } catch (e) {
+          sendJson(res, 500, { ok: false, error: 'OCR 失败: ' + String(e) });
+        }
+        return;
+      }
       // POST /api/shell {cwd, command} → {ok, jobId}；GET /api/shell?jobId=&after=N → 增量输出
       // POST /api/shell/stop {jobId} → 终止进程树
       if (req.method === 'POST' && url.pathname === '/api/shell') {

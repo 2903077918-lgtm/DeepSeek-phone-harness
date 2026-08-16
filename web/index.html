@@ -1860,6 +1860,17 @@ svg { flex: none; }
       row.appendChild(it);
     });
   }
+  // 图片 → Markdown 文本（电脑端 Windows OCR，免费本地不耗 token）
+  async function ocrImages(imgs) {
+    var parts = [];
+    for (var i = 0; i < imgs.length; i++) {
+      var d = await api('/api/ocr', { method: 'POST', body: JSON.stringify({ imageBase64: imgs[i].data }), timeoutMs: 30000 });
+      if (d && d.ok && d.text) {
+        parts.push('--- 图片' + (i + 1) + ' ---\n' + d.text.trim());
+      }
+    }
+    return parts.join('\n\n');
+  }
 
   // ============ 发送 ============
   async function sendMessage(interrupt) {
@@ -1896,7 +1907,16 @@ svg { flex: none; }
       if (state.currentSess) {
         // 已有会话：dsh-continue 后台执行（interrupt=打断插入）；events 流式 + 响应结果双保险
         var sid = state.currentSess.sessionId;
-        var images = attach.length ? attach.slice() : undefined;
+        // 图片 → OCR 转文本（免费本地，不耗 token）拼进任务；不再直接发图片（模型可不支持图像输入）
+        var ocrText = '';
+        if (attach.length) {
+          try {
+            ocrText = await ocrImages(attach);
+            toast('图片已转为文本，正在发送…');
+          } catch (e) { toast('图片转文字失败：' + e.message, true); }
+        }
+        if (ocrText) text = text + '\n\n[用户附带的图片内容（OCR）]\n' + ocrText;
+        var images = undefined; // OCR 后以文本发送，不传 image part
         state.streamBase = 0;
         state.continuePending = true; // 任务进行中，pollStream 不得提前收尾
         api('/api/events?sessionId=' + enc(sid) + '&afterSeq=0', { timeoutMs: 6000 })
