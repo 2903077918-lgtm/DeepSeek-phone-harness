@@ -322,6 +322,22 @@ svg { flex: none; }
   white-space: nowrap; transition: all 0.15s;
 }
 .traj-toggle.on { color: var(--blue-2); border-color: var(--blue); background: var(--blue-soft); }
+/* 子代理 / 后台任务 chips（可展开） */
+.live-chips { display: flex; align-items: center; gap: 6px; padding: 8px 14px 0; flex: none; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.live-chips::-webkit-scrollbar { display: none; }
+.live-chip { cursor: pointer; }
+.live-chip .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--blue-2); flex: none; display: none; }
+.live-chip.has-live .live-dot { display: inline-block; }
+.live-chip-hint { flex: none; font-size: 10.5px; color: var(--text-3); }
+.live-panel { flex: none; border-bottom: 1px solid var(--border); background: var(--bg-drawer); padding: 6px 14px 10px; max-height: 40vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.live-panel-body { display: flex; flex-direction: column; gap: 4px; }
+.live-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; font-size: 12.5px; }
+.live-row:hover { background: var(--bg-sel); }
+.live-row .lr-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.live-row.run .lr-dot { background: var(--blue-2); animation: ses-pulse 1.6s infinite; }
+.live-row .lr-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-row .lr-s { flex: none; font-size: 10.5px; color: var(--text-3); }
+.live-empty { padding: 16px; text-align: center; font-size: 12px; color: var(--text-3); }
 /* 轨迹面板（ASSISTANT / TOOL 时间线） */
 .traj-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; border-bottom: 1px solid var(--border); }
 .traj-search {
@@ -760,6 +776,10 @@ svg { flex: none; }
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span>新会话</span>
       </button>
+      <div class="seg drawer-view-seg" id="drawerViewSeg">
+        <button type="button" data-v="workspaces">工作区</button>
+        <button type="button" data-v="sessions">会话</button>
+      </div>
     </div>
     <div class="drawer-search">
       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -899,6 +919,21 @@ svg { flex: none; }
           <span id="trajToggleLabel">轨迹</span>
         </button>
         <button class="btn ghost sm" id="wsSwitchBtn" type="button">切换工作区</button>
+      </div>
+      <!-- 子代理 / 后台任务 chips（对标 DSH 桌面：计数可点开展开） -->
+      <div class="live-chips" id="liveChips">
+        <button class="chip live-chip" id="subagentChip" type="button" title="子代理">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M1 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/><path d="M17 8a4 4 0 0 1 0 8"/></svg>
+          <span id="subagentChipLabel">0 子代理</span>
+        </button>
+        <button class="chip live-chip" id="jobsChip" type="button" title="后台任务">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          <span id="jobsChipLabel">0 后台任务</span>
+        </button>
+        <span class="live-chip-hint" id="liveChipHint"></span>
+      </div>
+      <div class="live-panel hidden" id="livePanel">
+        <div class="live-panel-body" id="livePanelBody"></div>
       </div>
       <!-- 轨迹面板（对标 DSH 桌面“对话 / 轨迹”切换：ASSISTANT/TOOL 时间线 + 搜索） -->
       <div class="traj-panel hidden" id="trajPanel">
@@ -1265,6 +1300,8 @@ svg { flex: none; }
     statusTimer: null,        // 会话状态（轮/步/耗时/权限）周期刷新
     busyEnter: load('busyEnter', 'steer'), // 繁忙时 Enter：steer 插话 / queue 排队（默认同 DSH ui-conversation.busyEnter）
     pendingQueue: [],   // queue 模式下待补发的消息
+    locale: load('locale', 'zh'), // 手机端界面语言（zh/en，与 DSH locale.preference 联动）
+    drawerView: load('drawerView', 'sessions'), // 抽屉视图：sessions（当前工作区会话）/ workspaces（全部工作区，对标 DSH groupBy）
     theme: load('theme', 'dark'),   // 手机端默认深色；设置里可切 浅色/跟随系统
   };
 
@@ -1443,6 +1480,7 @@ svg { flex: none; }
     state.currentSess = null;
     state.taskStat = { input: 0, output: 0, cacheRead: 0 }; // 切换工作区清空统计，避免显示上个会话状态
     stopLiveFollow(); stopStatusTimer(); state.liveMsg = null; // 停止上个会话的实时跟随
+    livePanelType = null; var lp2 = $('livePanel'); if (lp2) lp2.classList.add('hidden');
     save('wsId', ws.workspaceId); // 记忆上次工作区，下次连接直接进对话页
     $('wsLabel').textContent = ws.title || ws.path;
     $('chatTitle').textContent = ws.title || ws.path;
@@ -1464,6 +1502,8 @@ svg { flex: none; }
   function renderDrawer() {
     var list = $('drawerList');
     list.textContent = '';
+    segSet($('drawerViewSeg'), state.drawerView);
+    if (state.drawerView === 'workspaces') { renderWorkspaceView(list); return; }
     if (!state.currentWs) {
       var e = document.createElement('div');
       e.className = 'empty';
@@ -1557,6 +1597,7 @@ svg { flex: none; }
       ex.addEventListener('click', function () { state.drawerShowAll = !state.drawerShowAll; renderDrawer(); });
       list.appendChild(ex);
     }
+    applyLocale();
   }
   // 会话操作面板（手机端：⋮ / 长按 / 右键 → 分支·重命名·删除）
   var sessSheetTarget = null;
@@ -1566,6 +1607,41 @@ svg { flex: none; }
     $('sessMask').classList.remove('hidden');
   }
   function closeSessSheet() { $('sessMask').classList.add('hidden'); sessSheetTarget = null; }
+  // 工作区视图（对标 DSH groupBy=workspace：全部工作区，点选后进入其会话）
+  function renderWorkspaceView(list) {
+    var sec = document.createElement('div');
+    sec.className = 'sec-label';
+    sec.textContent = '工作区';
+    list.appendChild(sec);
+    if (!state.ws.length) {
+      var e = document.createElement('div');
+      e.className = 'empty';
+      e.style.padding = '30px 10px';
+      e.textContent = '暂无工作区';
+      list.appendChild(e);
+      return;
+    }
+    state.ws.forEach(function (w, i) {
+      var it = document.createElement('div');
+      it.className = 'drawer-item' + (state.currentWs && state.currentWs.workspaceId === w.workspaceId ? ' active' : '');
+      it.style.cursor = 'pointer';
+      var main = document.createElement('div');
+      main.className = 'main';
+      main.innerHTML = '<span class="drawer-title-row"><span class="ws-ic" style="display:grid;place-items:center;color:var(--text-2)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></span><span class="t">' + esc(w.title || w.path) + '</span></span>' +
+        '<span class="s">' + esc(w.path || '') + '</span>';
+      main.addEventListener('click', function () {
+        state.drawerView = 'sessions'; save('drawerView', 'sessions');
+        selectWorkspace(i);
+        renderDrawer();
+      });
+      var cnt = document.createElement('span');
+      cnt.className = 'time';
+      cnt.textContent = typeof w.sessionCount === 'number' ? w.sessionCount + '' : '';
+      it.appendChild(main);
+      it.appendChild(cnt);
+      list.appendChild(it);
+    });
+  }
   // 分支会话（session.fork）
   async function forkSession(s) {
     if (!confirm('分支会话 "' + (s.title || s.cwd || '') + '"？（创建独立副本继续）')) return;
@@ -1648,6 +1724,7 @@ svg { flex: none; }
       state.liveMsg = null;
       startLiveFollow(sess.sessionId, state.followBase);
       startStatusTimer();
+      refreshLiveChips(); // 子代理/后台任务计数
     } catch (e) {
       if (!preserveRunning) {
         state.msgs = [];
@@ -1701,6 +1778,7 @@ svg { flex: none; }
     // 轨迹面板开着时同步刷新（消息流式更新后内容不陈旧）
     var tp = $('trajPanel');
     if (tp && !tp.classList.contains('hidden')) renderTrajectory();
+    applyLocale();
     tl.scrollTop = tl.scrollHeight;
   }
   // 最下方统计条：token 用量 / 缓存命中
@@ -2775,10 +2853,73 @@ svg { flex: none; }
   // 会话状态周期刷新（轮/步/耗时/权限/todos）：打开会话即启动，不依赖本地是否发消息
   function startStatusTimer() {
     stopStatusTimer();
-    state.statusTimer = setInterval(function () { refreshStatLive(); }, 6000);
+    state.statusTimer = setInterval(function () { refreshStatLive(); refreshLiveChips(); }, 6000);
   }
   function stopStatusTimer() {
     if (state.statusTimer) { clearInterval(state.statusTimer); state.statusTimer = null; }
+  }
+
+  // ============ 子代理 / 后台任务 chips（对标 DSH 桌面计数，可点开展开） ============
+  var liveSubagents = [];
+  var livePanelType = null; // 'subagents' | 'jobs' | null
+  async function refreshLiveChips() {
+    var sa = $('subagentChipLabel'), jc = $('jobsChipLabel');
+    if (!sa || !jc) return;
+    // 子代理：当前会话 subagent.list
+    var saCount = 0, saRun = 0;
+    if (state.currentSess) {
+      try {
+        var d = await api('/api/agents?sessionId=' + enc(state.currentSess.sessionId), { timeoutMs: 6000 });
+        liveSubagents = (d && d.items) || [];
+        saCount = liveSubagents.length;
+        saRun = liveSubagents.filter(function (a) { return a.activity === 'running' || a.activity === 'active'; }).length;
+      } catch (e) { liveSubagents = []; }
+    }
+    sa.textContent = saCount + (state.locale === 'en' ? ' subagents' : ' 子代理');
+    // 后台任务：当前工作区运行中的会话（进行中的任务）
+    var runSessions = state.sessions.filter(function (s) { return s.running; });
+    jc.textContent = runSessions.length + (state.locale === 'en' ? ' jobs' : ' 后台任务');
+    $('subagentChip').classList.toggle('has-live', saRun > 0);
+    $('jobsChip').classList.toggle('has-live', runSessions.length > 0);
+    var hint = $('liveChipHint');
+    if (hint) hint.textContent = (saRun || runSessions.length) ? (state.locale === 'en' ? '● running' : '● 有进行中') : '';
+    if (livePanelType === 'subagents') renderLivePanel('subagents');
+    else if (livePanelType === 'jobs') renderLivePanel('jobs');
+  }
+  function renderLivePanel(type) {
+    var body = $('livePanelBody');
+    body.textContent = '';
+    if (type === 'subagents') {
+      if (!liveSubagents.length) { body.innerHTML = '<div class="live-empty">' + (state.locale === 'en' ? 'No subagents' : '暂无子代理') + '</div>'; return; }
+      liveSubagents.forEach(function (a) {
+        var run = a.activity === 'running' || a.activity === 'active';
+        var row = document.createElement('div');
+        row.className = 'live-row' + (run ? ' run' : '');
+        var mode = a.mode ? (state.locale === 'en' ? a.mode : a.mode) : '';
+        row.innerHTML = '<span class="lr-dot"></span><span class="lr-t">' + esc(a.label || a.sessionId || 'subagent') + '</span>' +
+          '<span class="lr-s">' + esc([run ? (state.locale === 'en' ? 'running' : '进行中') : (state.locale === 'en' ? 'idle' : '空闲'), mode, a.kind || ''].filter(Boolean).join(' · ')) + '</span>';
+        body.appendChild(row);
+      });
+    } else {
+      var runSessions = state.sessions.filter(function (s) { return s.running; });
+      if (!runSessions.length) { body.innerHTML = '<div class="live-empty">' + (state.locale === 'en' ? 'No background tasks' : '暂无后台任务') + '</div>'; return; }
+      runSessions.forEach(function (s) {
+        var row = document.createElement('div');
+        row.className = 'live-row run';
+        var st = s.stats || {};
+        var meta = [st.turns ? st.turns + ' ' + (state.locale === 'en' ? 'turns' : '轮') : '', st.steps ? st.steps + ' ' + (state.locale === 'en' ? 'steps' : '步') : ''].filter(Boolean).join(' · ');
+        row.innerHTML = '<span class="lr-dot"></span><span class="lr-t">' + esc(s.title || s.cwd || 'session') + '</span>' +
+          '<span class="lr-s">' + esc(meta || (state.locale === 'en' ? 'running' : '进行中')) + '</span>';
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', function () { openSession(s); closeDrawer(); $('livePanel').classList.add('hidden'); livePanelType = null; });
+        body.appendChild(row);
+      });
+    }
+  }
+  function toggleLivePanel(type) {
+    livePanelType = (livePanelType === type) ? null : type;
+    if (livePanelType) { renderLivePanel(livePanelType); $('livePanel').classList.remove('hidden'); }
+    else $('livePanel').classList.add('hidden');
   }
 
   // ============ 审批（codex-relay approvalRequest 卡） ============
@@ -3318,6 +3459,108 @@ svg { flex: none; }
     }
   }
 
+  // ============ 手机端 i18n（中/英，与 DSH locale.preference 联动） ============
+  // 界面外壳文本词典（zh → en）；消息内容/会话标题/代码等数据不翻译
+  var I18N = {
+    '未选择工作区': 'No workspace', '标准模式': 'Standard', '权限': 'Permission', '模型': 'Model', '未连接': 'Disconnected',
+    '新会话': 'New chat', '搜索会话': 'Search sessions', '工作区': 'Workspace', '会话': 'Sessions',
+    '展开其余 ': 'Show ', ' 个会话': ' sessions', '收起会话': 'Collapse', '更多功能': 'More',
+    '设置': 'Settings', '文件': 'Files', '终端': 'Terminal', '任务': 'Tasks', '目标': 'Goals', '技能': 'Skills',
+    '子代理': 'Subagents', '连接设置': 'Connection', '选择工作区': 'Select workspace', '进行中': 'Running',
+    '搜索': 'Search', '搜索轨迹': 'Search trajectory', '条': 'items', '暂无轨迹': 'No trajectory', '无匹配结果': 'No matches',
+    '对话': 'Chat', '轨迹': 'Trajectory', '切换工作区': 'Switch workspace', '返回': 'Back', '刷新': 'Refresh', '重连': 'Reconnect',
+    '输入任务，交给电脑上的 DSH…': 'Send a task to DSH on your PC…', '停止': 'Stop', '发送': 'Send',
+    '任务清单': 'Task list', '步': 'steps', '需要授权': 'Approval needed', '允许一次': 'Allow once', '拒绝': 'Reject',
+    '需要批准': 'Approval needed', '项待批准': ' pending', '复制': 'Copy', '思考过程': 'Thinking', '思考': 'Think',
+    '步骤 ': 'Step ', '执行中': 'Running', '完成': 'Done', '失败': 'Failed', '参数': 'Arguments', '结果': 'Result', '错误': 'Error',
+    '预览版': 'Preview', '探索未至之境': 'Explore the unknown', '描述你想要构建的内容': 'Describe what you want to build',
+    '点击切换模式': 'Tap to switch mode', '查看权限': 'View permission', '点击切换模型': 'Tap to switch model',
+    '轮': 'turns', '步 ': 'steps', '首token': '1st token', '缓存': 'cache', '上下文': 'context',
+    '通用设置': 'General', '新会话默认权限': 'Default permission for new sessions',
+    '影响之后新建的会话（当前会话见权限面板）': 'Applies to new sessions (current session: tap permission pill)',
+    '外观': 'Appearance', '界面颜色': 'UI color', '深色': 'Dark', '浅色': 'Light', '跟随系统': 'System',
+    '繁忙时 Enter 键行为': 'Enter behavior while busy', '智能体运行时按 Enter 发送': 'When the agent is busy',
+    '排队发送': 'Queue', '插话发送': 'Steer', '语言': 'Language', '电脑端 DSH 界面语言': 'DSH UI language (PC)',
+    '打开配置文件': 'Open config file', '在电脑端打开 DSH 配置文件': 'Open DSH config on the PC',
+    '当前模型': 'Current model', '提供方': 'Providers', '编辑电脑端 DSH 的模型提供方': 'Manage model providers on the PC',
+    '+ 添加提供方': '+ Add provider', '填写提供方 ID 与配置': 'Provider ID and config',
+    'API 密钥': 'API key', '在电脑端 DSH 凭据中管理，不会发送到手机': 'Stored in DSH credentials on the PC, never sent to phone',
+    '连接': 'Connection', '修改连接': 'Edit connection', '重新输入服务器地址和令牌': 'Re-enter server URL and token',
+    '断开连接': 'Disconnect', '清除保存的服务器和令牌': 'Clear saved server and token',
+    '关于': 'About', '连接状态': 'Status', '服务器地址': 'Server URL', '电脑名称': 'Machine', '版本': 'Version',
+    '手机远程控制电脑 DSH': 'Remote control DSH from your phone',
+    '选择模型': 'Select model', '选择模式': 'Select mode', '推理强度': 'Reasoning effort',
+    '只读': 'Read-only', '工作区写入': 'Workspace write', '完全访问': 'Full access',
+    '只能查看，不能修改文件或执行命令': 'View only; cannot modify files or run commands',
+    '可读写当前工作区内的文件': 'Read/write files in the current workspace',
+    '可执行任意命令、读写任意位置': 'Run any command; read/write anywhere',
+    '分支会话': 'Fork session', '创建独立副本继续': 'Create an independent copy', '重命名': 'Rename', '修改会话标题': 'Change the title',
+    '删除会话': 'Delete session', '从列表移除': 'Remove from the list', '会话操作': 'Session actions',
+    '添加提供方': 'Add provider', '提供方 ID': 'Provider ID',
+    'API 密钥环境变量名（在电脑端设置该环境变量）': 'API key env var (set it on the PC)',
+    'API 密钥（可选，直接存入电脑端 DSH 凭据）': 'API key (optional, saved to DSH credentials on the PC)',
+    'Base URL（可选，留空用默认）': 'Base URL (optional)', '模型 ID（逗号分隔，可选）': 'Model IDs (comma-separated, optional)',
+    '保 存': 'Save', '新对话': 'New chat', '加载会话历史…': 'Loading history…',
+  };
+  // 翻译一个文本（先长词后短词）
+  function i18nText(v) {
+    if (state.locale !== 'en' || !v) return v;
+    var out = String(v);
+    Object.keys(I18N).sort(function (a, b) { return b.length - a.length; }).forEach(function (zh) {
+      if (out.indexOf(zh) >= 0) out = out.split(zh).join(I18N[zh]);
+    });
+    return out;
+  }
+  // 数据区（消息/会话标题/代码/终端输出等）不翻译
+  var I18N_SKIP = '.drawer-item, #timeline, #trajList, .asst-body, .editor-pre, .term-pre, .task-body, .appr-card .r, .appr-card .q-detail, .tc-detail, .msg, .connect-card p, #chatTitle, #chatSub, #filesPath, #editorPath, #termOut, .provider-item .pi-t, .drawer-item .t';
+  function i18nWalk(root) {
+    if (!root) return;
+    var isEn = state.locale === 'en';
+    // 文本节点
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function (n) {
+      var p = n.parentElement;
+      while (p && p !== root) {
+        if (p.matches && p.matches(I18N_SKIP)) return;
+        p = p.parentElement;
+      }
+      var v = n.nodeValue || '';
+      if (!n._zh) n._zh = v;
+      var out = isEn ? i18nText(n._zh) : n._zh;
+      if (out !== n.nodeValue) n.nodeValue = out;
+    });
+    // placeholder
+    root.querySelectorAll('[placeholder]').forEach(function (el) {
+      var ph = el.getAttribute('placeholder') || '';
+      if (!el._zhPh) el._zhPh = ph;
+      var out = isEn ? i18nText(el._zhPh) : el._zhPh;
+      if (out !== ph) el.setAttribute('placeholder', out);
+    });
+  }
+  function applyLocale() {
+    document.documentElement.setAttribute('data-locale', state.locale);
+    i18nWalk(document.querySelector('.topbar'));
+    i18nWalk(document.querySelector('.drawer'));
+    i18nWalk(document.querySelector('.chat-head'));
+    i18nWalk(document.getElementById('todoPanel'));
+    i18nWalk(document.querySelector('.inputbar'));
+    i18nWalk(document.getElementById('chatStat'));
+    i18nWalk(document.querySelector('.traj-panel'));
+    i18nWalk(document.getElementById('liveChips'));
+    i18nWalk(document.getElementById('livePanel'));
+    i18nWalk(document.getElementById('paneSettings'));
+    i18nWalk(document.getElementById('paneWorkspaces'));
+    document.querySelectorAll('.sheet-mask').forEach(function (m) { i18nWalk(m); });
+    document.querySelectorAll('.dsh-empty').forEach(function (e) { i18nWalk(e); });
+  }
+  function setPhoneLocale(l) {
+    state.locale = (l === 'en' || l === 'zh') ? l : 'zh';
+    save('locale', state.locale);
+    applyLocale();
+  }
+
   // ============ DSH 设置（对标 DSH 桌面设置面板：Enter行为/语言/权限默认/提供方） ============
   var dshSettings = null;
   function segSet(el, v) {
@@ -3338,9 +3581,12 @@ svg { flex: none; }
       var be = uc.busyEnter || state.busyEnter || 'steer';
       state.busyEnter = be;
       segSet($('segBusyEnter'), be);
-      segSet($('segLocale'), loc.preference || 'zh');
+      // 语言：DSH 设置优先，手机端跟着变
+      if (loc.preference) setPhoneLocale(loc.preference);
+      segSet($('segLocale'), state.locale);
       segSet($('segPermDefault'), perm.defaultPreset || 'workspace-write');
       renderProviders(find('llm-pi-ai'));
+      applyLocale();
     } catch (e) { /* 设置接口不可用则保持默认 */ }
   }
   async function mutateSetting(ns, ops) {
@@ -3544,8 +3790,9 @@ svg { flex: none; }
       var b = e.target.closest ? e.target.closest('button[data-v]') : null;
       if (!b) return;
       segSet($('segLocale'), b.dataset.v);
+      setPhoneLocale(b.dataset.v); // 手机端界面语言跟着变
       mutateSetting('locale', [{ op: 'set', path: ['preference'], value: b.dataset.v }]).then(function (ok) {
-        if (ok) toast('已设置语言（电脑端 DSH 生效）');
+        if (ok) toast(state.locale === 'en' ? 'Language set (PC + phone)' : '已设置语言（电脑端 + 手机端同步）');
       });
     });
     $('segPermDefault').addEventListener('click', function (e) {
@@ -3596,6 +3843,7 @@ svg { flex: none; }
       state.msgs = [];
       state.taskStat = { input: 0, output: 0, cacheRead: 0 }; // 新会话清空统计，空状态不显示旧会话数据
       stopLiveFollow(); stopStatusTimer(); state.liveMsg = null; // 停止实时跟随
+      livePanelType = null; var lp1 = $('livePanel'); if (lp1) lp1.classList.add('hidden');
       var ts2 = $('trajSearch'); if (ts2) ts2.value = '';
       $('chatTitle').textContent = '新对话';
       $('chatSub').textContent = state.currentWs.path || '';
@@ -3631,6 +3879,9 @@ svg { flex: none; }
     $('sessDelBtn').addEventListener('click', function () { var s = sessSheetTarget; closeSessSheet(); if (s) deleteSession(s); });
     // 任务清单：头部点击收起 / 展开
     $('todoHead').addEventListener('click', function () { $('todoPanel').classList.toggle('collapsed'); });
+    // 子代理 / 后台任务 chips（展开面板）
+    $('subagentChip').addEventListener('click', function () { toggleLivePanel('subagents'); });
+    $('jobsChip').addEventListener('click', function () { toggleLivePanel('jobs'); });
     // 图片附件
     $('addBtn').addEventListener('click', function () { $('fileInput').click(); });
     $('fileInput').addEventListener('change', async function () {
@@ -3647,6 +3898,16 @@ svg { flex: none; }
     $('sessSearch').addEventListener('input', function () {
       state.sessQuery = this.value.trim().toLowerCase();
       renderDrawer();
+    });
+    // 抽屉视图切换（工作区 / 会话）
+    $('drawerViewSeg').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('button[data-v]') : null;
+      if (!b || b.dataset.v === state.drawerView) return;
+      state.drawerView = b.dataset.v;
+      save('drawerView', state.drawerView);
+      if (state.drawerView === 'workspaces' && !state.ws.length) loadWorkspaces();
+      renderDrawer();
+      applyLocale();
     });
     $('input').addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
@@ -3680,6 +3941,7 @@ svg { flex: none; }
       $('connectHint').textContent = '自动连接…';
       connect();
     }
+    applyLocale(); // 启动即应用已保存的界面语言
   }
   function autoGrow(el) {
     el.style.height = 'auto';
