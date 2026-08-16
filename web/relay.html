@@ -559,7 +559,7 @@ svg { flex: none; }
 .dsh-empty .empty-chips .chip { font-size: 12px; padding: 6px 12px; cursor: pointer; }
 
 /* composer */
-.inputbar { border-top: 1px solid var(--border); background: var(--bg); padding: 8px 12px calc(var(--safe-bottom) + 8px); flex: none; }
+.inputbar { border-top: 1px solid var(--border); background: var(--bg); padding: 6px 10px calc(var(--safe-bottom) + 6px); flex: none; }
 /* 对话页底部统计条（对标 DSH：轮/步 · LLM/工具耗时 · 模型 · 首token/速度/缓存） */
 .chat-stat { flex: none; display: flex; align-items: center; gap: 12px; padding: 4px 14px calc(3px + env(safe-area-inset-bottom, 0px)); font-size: 10px; color: var(--text-3); background: var(--bg-el); border-top: 1px solid var(--border); overflow-x: auto; white-space: nowrap; font-family: var(--mono); }
 .chat-stat .st-item { display: inline-flex; align-items: center; gap: 4px; }
@@ -567,50 +567,53 @@ svg { flex: none; }
 .chat-stat .st-cache { color: var(--text-2); }
 .chat-stat .st-run { color: var(--blue-2); }
 .chat-stat .st-warn { color: var(--red); }
-.attach-row { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; -webkit-overflow-scrolling: touch; }
-.attach-item { position: relative; flex: none; width: 56px; height: 56px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-strong); background: var(--bg-el); }
+.attach-row { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; -webkit-overflow-scrolling: touch; }
+.attach-item { position: relative; flex: none; width: 48px; height: 48px; border-radius: 9px; overflow: hidden; border: 1px solid var(--border-strong); background: var(--bg-el); }
 .attach-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.attach-item .x { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.65); color: #fff; display: grid; place-items: center; font-size: 10px; border: none; cursor: pointer; }
+.attach-item .x { position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: rgba(0,0,0,0.65); color: #fff; display: grid; place-items: center; font-size: 9px; border: none; cursor: pointer; }
 .composer {
   display: flex; flex-direction: column;
   background: var(--bg-el); border: 1px solid var(--border-strong);
-  border-radius: 18px; padding: 6px;
+  border-radius: 14px; padding: 4px;
   transition: border-color 0.15s;
 }
 .composer:focus-within { border-color: var(--blue); }
-.composer-row { display: flex; align-items: flex-end; gap: 6px; }
+.composer-row { display: flex; align-items: flex-end; gap: 4px; }
 .composer .add {
-  flex: none; width: 32px; height: 32px; border-radius: 50%;
-  display: grid; place-items: center; color: var(--text-2); margin-bottom: 2px; margin-left: 6px;
+  flex: none; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--text-3); margin-bottom: 1px; margin-left: 3px;
 }
+.composer .add svg { width: 15px; height: 15px; }
 .composer .add:active { transform: scale(0.9); }
 .composer textarea {
-  flex: 1; min-width: 0; min-height: 38px; max-height: 120px;
+  flex: 1; min-width: 0; min-height: 30px; max-height: 110px;
   resize: none; background: transparent; border: none; color: var(--text);
-  padding: 9px 0; font-size: 16px; line-height: 1.45; outline: none;
+  padding: 6px 0; font-size: 16px; line-height: 1.4; outline: none;
 }
 .composer textarea::placeholder { color: var(--text-3); }
 .composer .send {
-  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
   background: var(--blue); color: #fff;
   display: grid; place-items: center; transition: transform 0.08s, opacity 0.15s;
 }
+.composer .send svg { width: 15px; height: 15px; }
 .composer .send:active { transform: scale(0.9); }
 .composer .send:disabled { background: var(--bg-sel); color: var(--text-3); }
 
 /* 模型胶囊 + 底部选择面板（对标 DSH Web GUI）：放在输入框上方工具行 */
 /* 模型胶囊嵌入输入框卡片底部（对标 DSH：输入区自带模型/工具行） */
 .composer-models {
-  display: flex; align-items: center; gap: 8px; flex: none;
-  border-top: 1px solid var(--border); margin-top: 2px; padding: 7px 8px 2px;
+  display: flex; align-items: center; gap: 6px; flex: none;
+  border-top: 1px solid var(--border); margin-top: 1px; padding: 4px 6px 1px;
   overflow-x: auto; -webkit-overflow-scrolling: touch;
 }
 .composer-models-hint { font-size: 11px; color: var(--text-3); white-space: nowrap; }
 .model-pill {
-  flex: none; display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--blue-2); border: 1px solid rgba(64,112,224,0.35);
-  background: rgba(64,112,224,0.08); border-radius: 999px; padding: 6px 12px;
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; color: var(--blue-2); border: 1px solid rgba(64,112,224,0.35);
+  background: rgba(64,112,224,0.08); border-radius: 999px; padding: 4px 10px;
 }
+.model-pill svg { width: 11px; height: 11px; }
 .model-pill:active { transform: scale(0.97); }
 .model-pill .mc-chev { color: var(--text-3); }
 .model-pill.preset-pill { color: var(--text-2); border-color: var(--border-strong); background: var(--bg-sel); }
