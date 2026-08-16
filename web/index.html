@@ -155,24 +155,35 @@ svg { flex: none; }
 
 /* ============ 顶部栏 ============ */
 .topbar {
-  display: flex; align-items: center; gap: 10px;
-  padding: calc(var(--safe-top) + 6px) 12px 8px;
+  display: flex; align-items: center; gap: 8px;
+  padding: calc(var(--safe-top) + 6px) 10px 6px;
   border-bottom: 1px solid var(--border);
   flex: none; min-height: 52px;
 }
-.brand { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-.brand .whale { width: 22px; height: 22px; color: var(--gold); }
-.brand-name { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.brand-sub { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.brand-sub:hover { color: var(--text); }
-.conn-pill {
-  display: flex; align-items: center; gap: 6px; flex: none;
+/* DSH 风格状态胶囊条 */
+.top-chips { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+.top-chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
   background: var(--bg-el); border: 1px solid var(--border);
-  border-radius: 999px; padding: 5px 12px; font-size: 12px; color: var(--text-2);
+  border-radius: 999px; padding: 5px 10px; font-size: 12px; color: var(--text-2);
+  white-space: nowrap; max-width: 180px;
 }
-.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex: none; }
-.conn-dot.on { background: var(--green); }
-.conn-dot.off { background: var(--red); }
+.chip:hover { border-color: var(--border-strong); color: var(--text); background: var(--bg-sel); }
+.chip svg { color: var(--text-3); }
+.chip .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); flex: none; }
+.chip .conn-dot.on { background: var(--green); }
+.chip .conn-dot.off { background: var(--red); }
+.chip .conn-dot.na { background: var(--text-3); }
+.chip > span:not(.conn-dot):not(.chip-effort) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chip-effort { color: var(--text-3); margin-left: 2px; }
+.chip.chip-ws { font-weight: 600; }
+.chip.chip-preset { color: var(--gold); }
+.chip.chip-preset svg { color: var(--gold); }
+.chip.chip-perm.ch-full { color: var(--green); border-color: rgba(107,191,89,0.4); }
+.chip.chip-perm.ch-full svg { color: var(--green); }
+.chip.chip-model { color: var(--blue-2); }
+.chip.chip-model svg { color: var(--blue-2); }
 
 /* ============ 面板 ============ */
 .pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -616,20 +627,33 @@ svg { flex: none; }
   <!-- 主区 -->
   <div class="main">
     <!-- 顶部栏 -->
-    <header class="topbar">
+    <header class="topbar dsh-topbar">
       <button class="icon-btn hidden" id="menuBtn" type="button" aria-label="菜单" style="display:none">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <div class="brand">
-        <svg class="whale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 13.5c0-3.8 3.2-7.5 9.5-7.5 5.4 0 9.5 3.1 9.5 6.9 0 3-2.1 4.9-5.2 4.9-2 0-3.1-.9-4.1-2-1 1.1-2.1 2-4.1 2C5 17.8 2.5 15.9 2.5 13.5z"/><path d="M2.5 13.5C1.6 13.5.8 12.7.8 11.8c0-.9.8-1.7 1.7-1.7"/><circle cx="17.8" cy="10.8" r=".55" fill="currentColor"/><path d="M6.5 9.5l2 1.2-2 1.2"/></svg>
-        <div style="min-width:0">
-          <div class="brand-name">DeepSeek Harness</div>
-          <div class="brand-sub" id="wsLabel">未选择工作区</div>
-        </div>
+      <!-- DSH 风格状态胶囊条：工作区 | 模式 | 权限 | 模型·强度 -->
+      <div class="top-chips">
+        <button class="chip chip-ws" id="wsLink" type="button" title="切换工作区">
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+          <span id="wsLabel">未选择工作区</span>
+        </button>
+        <button class="chip chip-preset" id="presetBtn" type="button" title="切换模式">
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          <span id="presetBtnLabel">标准模式</span>
+        </button>
+        <button class="chip chip-perm" id="permPill" type="button" title="当前权限">
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/></svg>
+          <span id="permPillLabel">权限</span>
+        </button>
+        <button class="chip chip-model" id="modelBtn" type="button" title="切换模型">
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span id="modelBtnLabel">模型</span>
+          <span class="chip-effort" id="topEffort"></span>
+        </button>
+        <button class="chip chip-conn" id="connPill" type="button" title="连接">
+          <span class="conn-dot na" id="connDot"></span><span id="connLabel">未连接</span>
+        </button>
       </div>
-      <button class="conn-pill" id="connPill" type="button">
-        <span class="conn-dot na" id="connDot"></span><span id="connLabel">未连接</span>
-      </button>
     </header>
 
     <!-- 连接页 -->
@@ -703,21 +727,7 @@ svg { flex: none; }
             </button>
             <button class="send" id="sendBtn" type="button" aria-label="发送"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
           </div>
-          <div class="composer-models hidden" id="composerModels">
-            <button class="model-pill" id="modelBtn" type="button" title="切换模型">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><polyline points="12 6 12 12 16 14"/></svg>
-              <span id="modelBtnLabel">模型</span>
-              <svg class="mc-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <button class="model-pill preset-pill" id="presetBtn" type="button" title="切换模式">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
-              <span id="presetBtnLabel">标准模式</span>
-              <svg class="mc-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <span class="model-pill stat-pill perm-pill hidden" id="permPill" title="当前权限">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <span id="permPillLabel">权限</span>
-            </span>
+          <div class="composer-models" id="composerModels">
             <span class="model-pill stat-pill appr-pill hidden" id="apprPill" title="审批状态">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
               <span id="apprPillLabel">需要批准</span>
@@ -1363,26 +1373,30 @@ svg { flex: none; }
     var permEl = $('permPill');
     var apprEl = $('apprPill');
     var sess = state.currentSess;
-    // 权限：currentSess.permissions.currentValue
-    if (sess && sess.permissions && sess.permissions.currentValue) {
-      var pv = sess.permissions.currentValue;
-      var pl = permNameMap[pv] || pv;
+    // 权限胶囊（顶栏常驻）：显示 permissions.currentValue
+    if (permEl) {
+      var pl = '—';
+      if (sess && sess.permissions && sess.permissions.currentValue) {
+        var pv = sess.permissions.currentValue;
+        pl = permNameMap[pv] || pv;
+        permEl.classList.toggle('ch-full', pv === 'danger-full-access');
+      } else {
+        permEl.classList.remove('ch-full');
+      }
       $('permPillLabel').textContent = pl;
-      permEl.classList.remove('hidden');
-      permEl.classList.toggle('full', pv === 'danger-full-access');
-    } else {
-      permEl.classList.add('hidden');
     }
     // 审批：当前会话有待审批/提问 → 显示"需要批准"（高亮）
     var mine = state.approvals.filter(function (a) {
       return !sess || !a.sessionId || a.sessionId === sess.sessionId;
     });
-    if (mine.length) {
-      $('apprPillLabel').textContent = mine.length + ' 项待批准';
-      apprEl.classList.remove('hidden');
-      apprEl.classList.add('pending');
-    } else {
-      apprEl.classList.add('hidden');
+    if (apprEl) {
+      if (mine.length) {
+        $('apprPillLabel').textContent = mine.length + ' 项待批准';
+        apprEl.classList.remove('hidden');
+        apprEl.classList.add('pending');
+      } else {
+        apprEl.classList.add('hidden');
+      }
     }
   }
   function msgEl(m) {
@@ -1603,7 +1617,9 @@ svg { flex: none; }
       modelState.groups = d.groups || [];
       var lbl = modelState.current ? (modelState.current.model || '模型') : '模型';
       $('modelBtnLabel').textContent = lbl;
-      $('composerModels').classList.remove('hidden');
+      var eff = $('topEffort');
+      if (eff) eff.textContent = modelState.current && modelState.current.reasoningEffort ? (' · ' + modelState.current.reasoningEffort) : '';
+      // 顶栏模型胶囊常驻显示；composerModels 不再控制（保留 hint 更新）
       var hint = $('composerModelHint');
       if (hint) hint.textContent = (modelState.current && modelState.current.reasoningEffort ? ('· ' + modelState.current.reasoningEffort) : '') + (presetState.name ? ' · ' + presetState.name : '');
     } catch (e) { /* 模型接口不可用则隐藏 */ }
@@ -2673,8 +2689,8 @@ svg { flex: none; }
     $('connBtn').addEventListener('click', function () { closeDrawer(); showPane('paneConnect'); });
     $('wsBtn').addEventListener('click', function () { closeDrawer(); showPane('paneWorkspaces'); loadWorkspaces(); });
     $('wsNewBtn').addEventListener('click', function () { newWorkspaceUI(); });
-    // 顶栏工作区名可点击切换工作区（对话界面优先，工作区为次要入口）
-    $('wsLabel').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
+    // 顶栏工作区胶囊可点击切换工作区（对话界面优先，工作区为次要入口）
+    $('wsLink').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
     $('wsSwitchBtn').addEventListener('click', function () { showPane('paneWorkspaces'); loadWorkspaces(); });
     $('filesBtn').addEventListener('click', function () { closeDrawer(); openFileBrowser(null); });
     $('termBtn').addEventListener('click', function () { closeDrawer(); openTerminal(); });
@@ -2723,7 +2739,7 @@ svg { flex: none; }
       $('chatTitle').textContent = '新对话';
       $('chatSub').textContent = state.currentWs.path || '';
       $('timeline').textContent = '';
-      $('composerModels').classList.add('hidden'); // 新对话尚无会话，模型选择先隐藏
+      $('composerModels').classList.remove('hidden'); // 顶栏胶囊常驻；输入框行仅审批按需显示
       renderDrawer();
       showPane('paneChat');
       $('input').focus();
