@@ -637,6 +637,11 @@ svg { flex: none; }
 .model-item .m-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-item .m-desc { font-size: 11px; color: var(--text-2); }
 .model-item .m-check { flex: none; color: var(--blue-2); }
+/* 预设（模式）面板：名称独占一行、描述换行在下（对齐 DSH 桌面选择器；行内布局长描述会挤掉标题） */
+.model-item.stack { flex-direction: column; align-items: flex-start; gap: 3px; position: relative; padding-right: 34px; }
+.model-item.stack .m-name { width: 100%; white-space: normal; line-height: 1.4; }
+.model-item.stack .m-desc { line-height: 1.5; }
+.model-item.stack .m-check { position: absolute; right: 12px; top: 12px; }
 
 /* 思考过程折叠块（对标 DSH 的推理过程展示） */
 .think-block { margin: 6px 0 8px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.03); overflow: hidden; }
@@ -2235,9 +2240,9 @@ svg { flex: none; }
       var name = presetNameMap[p.id] || p.name || p.id;
       var it = document.createElement('button');
       it.type = 'button';
-      it.className = 'model-item' + (presetState.current === p.id ? ' on' : '');
+      it.className = 'model-item stack' + (presetState.current === p.id ? ' on' : '');
       it.innerHTML = '<span class="m-name">' + esc(name) + '</span>' +
-        (p.description ? '<span class="m-desc">' + esc(String(p.description).slice(0, 80)) + '</span>' : '') +
+        (p.description ? '<span class="m-desc">' + esc(String(p.description)) + '</span>' : '') +
         (presetState.current === p.id ? '<span class="m-check">&#10003;</span>' : '');
       it.addEventListener('click', function () { selectPreset(p.id, name); });
       list.appendChild(it);
