@@ -18,6 +18,7 @@ import {
   upsertDevice, setDeviceStatus, createTask, updateTaskStatus, finishTask, appendTaskEvent, appendAudit,
   createUser, loginUser, generatePairCode, createPairCode, pairDeviceWithCode,
   listTasks, getTaskById, listTaskEvents, getDeviceByAgentId, listDevicesByUser,
+  findDeviceByTokenHash, createRelayRequest, listRelayRequestsQueued, finishRelayRequest, getRelayRequest,
 } from './store.js';
 import type { Env } from './bindings.js';
 
@@ -108,6 +109,7 @@ export default {
         if (!agentId) return json({ error: 'agentId 必填' }, 400);
         await upsertDevice(db, agentId, {
           name: body.name, os: body.os, arch: body.arch, version: body.version, publicKeyX25519: body.publicKey,
+          tokenHash: body.tokenHash || null,   // sha256(agent LAN token)，手机云端直连 /api/* 时校验
         });
         const { code, codeHash } = await generatePairCode();
         await createPairCode(db, agentId, codeHash);
@@ -214,6 +216,65 @@ export default {
       return json({ ok: true, taskId });
     }
 
+    // ---- 云端 /api/* 中继（手机云端直连 = 局域网同界面）：校验 token → 排队给 Agent → 长轮询结果 ----
+    if (pathname.startsWith('/api/')) {
+      if (method !== 'GET' && method !== 'POST') return json({ error: 'method not allowed' }, 405, origin);
+      const auth = request.headers.get('authorization') || '';
+      const token = auth.replace(/^Bearer\s+/i, '').trim();
+      if (!token) return json({ error: 'missing token' }, 401, origin);
+      const tokenHash = await sha256Hex(token);
+      const dev = await findDeviceByTokenHash(db, tokenHash);
+      if (!dev) return json({ error: 'token 未绑定设备' }, 401, origin);
+      const bodyText = method === 'POST' ? await request.text().catch(() => '') : '';
+      const rq = await createRelayRequest(db, {
+        deviceId: dev.agent_id || dev.id,
+        method,
+        path: pathname,
+        query: url.search || '',
+        body: bodyText || undefined,
+      });
+      // 长轮询：Agent 每 3s 拉取执行，最多等 ~22s
+      const deadline = Date.now() + 22000;
+      for (;;) {
+        const cur = await getRelayRequest(db, rq.id);
+        if (cur && cur.status !== 'queued') {
+          const resBody = cur.result_body ?? '';
+          const resStatus = cur.result_status ?? 502;
+          const headers: Record<string, string> = {
+            'content-type': resStatus >= 400 ? 'application/json' : detectContentType(cur.path, resBody),
+            'Access-Control-Allow-Origin': origin ?? '*',
+            'Vary': 'Origin',
+            'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+            'Access-Control-Allow-Headers': 'content-type, x-user-id, authorization',
+            'cache-control': 'no-store',
+          };
+          return new Response(resBody, { status: resStatus, headers });
+        }
+        if (Date.now() > deadline) {
+          await finishRelayRequest(db, rq.id, { status: 'timeout', resultStatus: 504, resultBody: JSON.stringify({ error: '设备未响应' }) });
+          return json({ error: '设备未响应（超时）' }, 504, origin);
+        }
+        await sleepMs(500);
+      }
+    }
+
+    // ---- Agent 轮询 relay：GET /v1/relay/requests?deviceId= 拉待执行 /api/* 请求 ----
+    if (method === 'GET' && pathname === '/v1/relay/requests') {
+      const deviceId = (url.searchParams.get('deviceId') || '').trim();
+      if (!deviceId) return json({ error: 'missing deviceId' }, 400, origin);
+      const items = await listRelayRequestsQueued(db, deviceId);
+      return json({ ok: true, items: items.map((r) => ({ id: r.id, method: r.method, path: r.path, query: r.query || '', body: r.body || '' })) }, 200, origin);
+    }
+    // ---- Agent 回传 relay 结果：POST /v1/relay/requests/:id/result {status, resultStatus, resultBody} ----
+    if (method === 'POST' && pathname.startsWith('/v1/relay/requests/') && pathname.endsWith('/result')) {
+      const rqId = decodeURIComponent(pathname.slice('/v1/relay/requests/'.length, -'/result'.length));
+      const body = await readJson(request);
+      const req = await getRelayRequest(db, rqId);
+      if (!req) return json({ error: '请求不存在' }, 404, origin);
+      await finishRelayRequest(db, rqId, { status: body.status === 'error' ? 'error' : 'done', resultStatus: Number(body.resultStatus) || 200, resultBody: String(body.resultBody ?? '') });
+      return json({ ok: true, requestId: rqId }, 200, origin);
+    }
+
     // 静态资源兜底（手机控制台）：非 /v1/ API 的 GET 请求交给 ASSETS（web/ 目录）
     // 根路径默认返回 index.html（= 新手机界面）；旧控制台归档在 /console
     if (method === 'GET' && !pathname.startsWith('/v1/')) {
@@ -259,4 +320,15 @@ async function readJson(request: Request): Promise<Record<string, any>> {
   } catch {
     return { raw: text };
   }
+}
+
+// ---- relay 辅助 ----
+function sleepMs(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+function detectContentType(path: string, body: string): string {
+  if (path.endsWith('.stream')) return 'text/event-stream; charset=utf-8';
+  try { JSON.parse(body); return 'application/json'; } catch { return 'text/plain; charset=utf-8'; }
 }

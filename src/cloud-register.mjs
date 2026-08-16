@@ -51,15 +51,23 @@ function derivePubFromPriv(privJwkStr) {
 
 /**
  * 上报设备（REST register），返回配对码或 null。
- * @param {object} opts { host, agentId, publicKey, name?, os? }
+ * @param {object} opts { host, agentId, publicKey, name?, os?, token? }
  */
 export async function registerDevice(opts) {
-  const { host, agentId, publicKey, name, os } = opts;
+  const { host, agentId, publicKey, name, os, token } = opts;
   if (!host || !agentId) throw new Error('缺少 host/agentId');
+  // tokenHash：sha256(agent LAN token)，云端据此把手机 /api/* 中继到本设备
+  let tokenHash = null;
+  if (token) {
+    try {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(token)));
+      tokenHash = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    } catch { /* tokenHash 可选 */ }
+  }
   const resp = await fetch(host + '/v1/devices/register', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ agentId, name: name || agentId, os, publicKey }),
+    body: JSON.stringify({ agentId, name: name || agentId, os, publicKey, tokenHash }),
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error('注册失败: ' + (data.error || ('HTTP ' + resp.status)));

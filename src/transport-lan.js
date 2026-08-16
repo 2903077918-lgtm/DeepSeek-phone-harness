@@ -600,6 +600,46 @@ export function createLanTransport({ config, rootDir, executor, history, queue }
         sendJson(res, 200, { ok: true, ns: out.ns, result: out.result });
         return;
       }
+      // ---- DSH 缺口补齐路由 ----
+      // 后台任务（events.mux session/jobs 帧实时缓存）：GET /api/dsh-jobs?sessionId=
+      if (req.method === 'GET' && url.pathname === '/api/dsh-jobs') {
+        if (!auth(req, res)) return;
+        const sessionId = (url.searchParams.get('sessionId') || '').trim();
+        if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
+        try {
+          const items = executor.getJobs(sessionId);
+          sendJson(res, 200, { ok: true, items });
+        } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); }
+        return;
+      }
+      // 会话日志导出（session.export no-envelope GET）：GET /api/dsh-session-export?sessionId=
+      if (req.method === 'GET' && url.pathname === '/api/dsh-session-export') {
+        if (!auth(req, res)) return;
+        const sessionId = (url.searchParams.get('sessionId') || '').trim();
+        if (!sessionId) { sendJson(res, 400, { ok: false, error: 'sessionId 不能为空' }); return; }
+        try {
+          const out = await executor.exportSessionLog(sessionId);
+          if (!out.ok) { sendJson(res, 502, { ok: false, error: out.error }); return; }
+          sendJson(res, 200, { ok: true, size: out.size, truncated: out.truncated, content: out.content });
+        } catch (e) { sendJson(res, 500, { ok: false, error: String(e) }); }
+        return;
+      }
+      // 子代理 prompt：POST /api/dsh-subagent-prompt {parentSessionId, childSessionId, text}
+      if (req.method === 'POST' && url.pathname === '/api/dsh-subagent-prompt') {
+        if (!auth(req, res)) return;
+        const body = await readBody(req);
+        const out = await executor.subagentPrompt({ parentSessionId: body.parentSessionId, childSessionId: body.childSessionId, text: body.text });
+        sendJson(res, out.ok ? 200 : 400, out);
+        return;
+      }
+      // 子代理 interrupt：POST /api/dsh-subagent-interrupt {parentSessionId, childSessionId}
+      if (req.method === 'POST' && url.pathname === '/api/dsh-subagent-interrupt') {
+        if (!auth(req, res)) return;
+        const body = await readBody(req);
+        const out = await executor.subagentInterrupt({ parentSessionId: body.parentSessionId, childSessionId: body.childSessionId });
+        sendJson(res, out.ok ? 200 : 400, out);
+        return;
+      }
       // ---- DSH 凭据（API 密钥导入）：POST /api/dsh-credentials {action:'set'|'unset', ref, value?} ----
       if (req.method === 'POST' && url.pathname === '/api/dsh-credentials') {
         if (!auth(req, res)) return;

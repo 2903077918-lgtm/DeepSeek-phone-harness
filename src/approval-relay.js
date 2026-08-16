@@ -23,6 +23,7 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
   const eventsBySession = new Map(); // sessionId -> [{seq,type,text?,subtype?,time}]（按 seq 升序）
   const subscribedSeq = new Map();   // sessionId -> 连接时 lastSeq 水位（判断是否需要回填）
   const lastHistoryFetch = new Map();// sessionId -> 上次 history 回填时间（冷却用）
+  const jobsBySession = new Map();   // sessionId -> 后台任务列表（events.mux 的 session/jobs 帧，实时）
   const MAX_EVENTS_PER_SESSION = 200; // 每会话保留最近 200 条
   const MAX_EVENT_SESSIONS = 200;     // 缓冲的会话数上限（LRU 淘汰）
   const HISTORY_FETCH_COOLDOWN_MS = 5000;
@@ -92,6 +93,11 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
     // 连接时各会话水位：getEvents 判断是否需要回填 history
     if (frame.method === 'session/subscribed' && p && p.sessionId) {
       subscribedSeq.set(String(p.sessionId), Number(p.lastSeq) || 0);
+      return;
+    }
+    // 后台任务帧：session/jobs（实时推送）→ 按会话存最新列表
+    if (frame.method === 'session/jobs' && p && p.sessionId) {
+      jobsBySession.set(String(p.sessionId), Array.isArray(p.jobs) ? p.jobs : []);
       return;
     }
     // 已解决帧：清除 pending（approval/resolved 与 question/resolved）
@@ -257,5 +263,10 @@ export function createApprovalRelay({ baseUrl = 'http://127.0.0.1:3080' } = {}) 
 
   start(); // 创建即启动常驻连接（失败静默重试，不影响其他功能）
 
-  return { listPending, respond, getEvents, start, stop };
+  // 某会话的后台任务（session/jobs 帧缓存；无帧时返回 []）
+  function getJobs(sessionId) {
+    return jobsBySession.get(String(sessionId || '')) || [];
+  }
+
+  return { listPending, respond, getEvents, getJobs, start, stop };
 }

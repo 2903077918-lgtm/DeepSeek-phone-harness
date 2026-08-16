@@ -57,6 +57,7 @@ if (mode === 'both' || mode === 'cloud') {
             host: restBase, agentId,
             publicKey: e2ee.publicKey,
             name: cloudCfg.deviceName || agentId,
+            token: config.token,   // LAN Bearer token → 云端存哈希，手机云端直连 /api/* 用
           });
           if (pairCode) console.log('[deepseekharness-relay] 设备配对码: ' + pairCode + '（15 分钟内到手机 cloud.html 输入绑定）');
         } catch (e) {
@@ -69,6 +70,8 @@ if (mode === 'both' || mode === 'cloud') {
         config,
         executor,
         pollIntervalMs: cloudCfg.pollIntervalMs || 3000,
+        lanBase: 'http://127.0.0.1:8788',   // 云端 /api/* 中继回环到本地 LAN 传输层
+        lanToken: config.token || '',
       });
       poller.start();
       console.log('[deepseekharness-relay] 云端轮询已启动: ' + restBase + '（每 ' + (cloudCfg.pollIntervalMs || 3000) + 'ms）');

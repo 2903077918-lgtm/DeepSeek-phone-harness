@@ -25,6 +25,7 @@ create table if not exists public.devices (
   arch             text,
   version          text,
   public_key_x25519 text,                                          -- E2EE 公钥（JWK x base64url）
+  token_hash       text,                                          -- sha256(agent LAN token)，手机云端直连时校验
   status           text not null default 'unbound',                -- unbound|online|offline|killed
   last_seen_at     timestamptz,
   kill_until       timestamptz,
@@ -81,6 +82,24 @@ create table if not exists public.task_events (
   at       timestamptz not null default now()
 );
 create index if not exists idx_task_events_task on public.task_events(task_id, id);
+
+-- ============ relay_requests（手机 → 云端 /api/* → Agent 轮询执行，云端=局域网同界面） ============
+create table if not exists public.relay_requests (
+  id            uuid primary key default gen_random_uuid(),
+  device_id     uuid references public.devices(id),
+  method        text not null,                  -- GET|POST
+  path          text not null,                  -- /api/xxx
+  query         text,                           -- ?a=b&c=d
+  body          text,                           -- 请求体原文（JSON 字符串）
+  status        text not null default 'queued', -- queued|done|error|timeout
+  result_status int,                            -- Agent 回传的 HTTP 状态码
+  result_body   text,                           -- Agent 回传的响应体原文
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+create index if not exists idx_relay_device on public.relay_requests(device_id, status, created_at);
+alter table public.relay_requests enable row level security;
+create policy p_relay_all on public.relay_requests for all using (true) with check (true);
 
 -- ============ tokens（access/refresh/device/resume 的哈希） ============
 create table if not exists public.tokens (

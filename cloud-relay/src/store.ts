@@ -27,7 +27,7 @@ export async function resolveDeviceUuid(db: SupabaseClient, idOrAgentId: string)
 export async function upsertDevice(
   db: SupabaseClient,
   agentId: string,
-  fields: { name?: string; os?: string; arch?: string; version?: string; publicKeyX25519?: string },
+  fields: { name?: string; os?: string; arch?: string; version?: string; publicKeyX25519?: string; tokenHash?: string },
 ): Promise<Device> {
   const existing = await getDeviceByAgentId(db, agentId);
   if (existing) {
@@ -39,6 +39,7 @@ export async function upsertDevice(
     if (fields.arch) patch.arch = fields.arch;
     if (fields.version) patch.version = fields.version;
     if (fields.publicKeyX25519) patch.public_key_x25519 = fields.publicKeyX25519;
+    if (fields.tokenHash) patch.token_hash = fields.tokenHash;
     const updated = await db.update<Device>('devices', existing.id, patch);
     return updated ?? existing;
   }
@@ -49,9 +50,73 @@ export async function upsertDevice(
     arch: fields.arch ?? null,
     version: fields.version ?? null,
     public_key_x25519: fields.publicKeyX25519 ?? null,
+    token_hash: fields.tokenHash ?? null,
     status: 'online',
     last_seen_at: new Date().toISOString(),
   });
+}
+
+/** 按 token 哈希查设备（手机云端直连 /api/* 时：Bearer token → sha256 → 找到这台设备） */
+export async function findDeviceByTokenHash(db: SupabaseClient, tokenHash: string): Promise<Device | null> {
+  return db.selectOne<Device>('devices', { token_hash: `eq.${tokenHash}` });
+}
+
+// ================= relay_requests（云端 /api/* 中继，Agent 轮询执行） =================
+export interface RelayRequest {
+  id: string;
+  device_id: string | null;
+  method: string;
+  path: string;
+  query: string | null;
+  body: string | null;
+  status: string;
+  result_status: number | null;
+  result_body: string | null;
+  created_at: string;
+}
+
+export async function createRelayRequest(
+  db: SupabaseClient,
+  fields: { deviceId: string; method: string; path: string; query?: string; body?: string },
+): Promise<RelayRequest> {
+  const deviceUuid = await resolveDeviceUuid(db, fields.deviceId);
+  return db.insert<RelayRequest>('relay_requests', {
+    device_id: deviceUuid,
+    method: fields.method,
+    path: fields.path,
+    query: fields.query ?? null,
+    body: fields.body ?? null,
+    status: 'queued',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+}
+
+/** Agent 拉取待执行的请求（按设备） */
+export async function listRelayRequestsQueued(db: SupabaseClient, deviceId: string): Promise<RelayRequest[]> {
+  const deviceUuid = await resolveDeviceUuid(db, deviceId);
+  if (!deviceUuid) return [];
+  return db.selectAll<RelayRequest>('relay_requests', {
+    device_id: `eq.${deviceUuid}`, status: 'eq.queued', order: 'created_at.asc', limit: '20',
+  });
+}
+
+/** Agent 回传执行结果 */
+export async function finishRelayRequest(
+  db: SupabaseClient,
+  requestId: string,
+  fields: { status: 'done' | 'error'; resultStatus?: number; resultBody?: string },
+): Promise<void> {
+  await db.update('relay_requests', requestId, {
+    status: fields.status,
+    result_status: fields.resultStatus ?? 500,
+    result_body: fields.resultBody ?? '',
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export async function getRelayRequest(db: SupabaseClient, requestId: string): Promise<RelayRequest | null> {
+  return db.selectOne<RelayRequest>('relay_requests', { id: `eq.${requestId}` });
 }
 
 /** 标记设备离线 / killed */

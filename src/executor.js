@@ -11,7 +11,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { DSH_CMD, TASK_TIMEOUT_MS, resolveApiKey } from './config.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchRpc, sleep, isoTime, historyToMessages, normPath, baseName } from './dsh-utils.js';
+import { fetchRpc, sleep, isoTime, historyToMessages, normPath, baseName, WEB_API_BASE } from './dsh-utils.js';
 import { createApprovalRelay } from './approval-relay.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -528,6 +528,41 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
       } catch (e) {
         return { ok: false, code: 'backend-unavailable', error: 'workspace.delete 失败: ' + String(e) };
       }
+    },
+    // ---- DSH 缺口补齐（官方 HTTP 路由表里存在、之前没接的）----
+    // 后台任务（events.mux 的 session/jobs 帧缓存，实时）
+    getJobs(sessionId) {
+      return (this.relay && typeof this.relay.getJobs === 'function') ? this.relay.getJobs(sessionId) : [];
+    },
+    // 会话日志导出（session.export 是 no-envelope GET，返回纯文本日志；限制前 500KB 供手机查看）
+    async exportSessionLog(sessionId) {
+      const sid = String(sessionId || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      try {
+        const resp = await fetch(WEB_API_BASE + '/api/session.export?sessionId=' + encodeURIComponent(sid));
+        if (!resp.ok) return { ok: false, code: 'backend-unavailable', error: 'session.export HTTP ' + resp.status };
+        const text = await resp.text();
+        return { ok: true, size: text.length, truncated: text.length > 500000, content: text.slice(0, 500000) };
+      } catch (e) { return { ok: false, code: 'backend-unavailable', error: 'session.export 失败: ' + String(e) }; }
+    },
+    // 子代理 prompt（subagent.prompt：给子代理发消息，mode=continuable）
+    async subagentPrompt({ parentSessionId, childSessionId, text } = {}) {
+      const p = String(parentSessionId || '').trim(), c = String(childSessionId || '').trim(), t = String(text || '').trim();
+      if (!p || !c) return { ok: false, code: 'bad-request', error: 'parentSessionId/childSessionId 必填' };
+      if (!t) return { ok: false, code: 'bad-request', error: 'text 必填' };
+      try {
+        const value = await fetchRpc('subagent.prompt', { parentSessionId: p, childSessionId: c, mode: 'continuable', content: [{ type: 'text', text: t }] });
+        return { ok: true, value };
+      } catch (e) { return { ok: false, code: 'backend-unavailable', error: 'subagent.prompt 失败: ' + String(e) }; }
+    },
+    // 子代理 interrupt（subagent.interrupt：打断子代理）
+    async subagentInterrupt({ parentSessionId, childSessionId } = {}) {
+      const p = String(parentSessionId || '').trim(), c = String(childSessionId || '').trim();
+      if (!p || !c) return { ok: false, code: 'bad-request', error: 'parentSessionId/childSessionId 必填' };
+      try {
+        const value = await fetchRpc('subagent.interrupt', { parentSessionId: p, childSessionId: c, mode: 'continuable' });
+        return { ok: true, value };
+      } catch (e) { return { ok: false, code: 'backend-unavailable', error: 'subagent.interrupt 失败: ' + String(e) }; }
     },
     // GET /api/dsh-models?sessionId=：转发 session.models（当前模型 + 可选模型分组）
     // GET /api/dsh-settings：settings.describe（读取 DSH 设置树，返回关键命名空间）

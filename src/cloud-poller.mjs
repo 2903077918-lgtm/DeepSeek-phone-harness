@@ -14,6 +14,8 @@ export function createCloudPoller(opts = {}) {
     pollIntervalMs = 3000,
     log = console,
     fetchImpl = fetch,
+    lanBase = 'http://127.0.0.1:8788',   // 云端 /api/* 中继 → 回环到本地 LAN 传输层
+    lanToken = '',
   } = opts;
   const cloud = config.cloud || {};
   const agentPrivate = cloud.e2ee && cloud.e2ee.privateKey;
@@ -22,6 +24,7 @@ export function createCloudPoller(opts = {}) {
   if (!agentId || !restBase) throw new Error('需 config.cloud.deviceId 与 url(可推导REST)');
 
   let timer = null;
+  let relayTimer = null;
   let polling = false;
   let running = false;
 
@@ -72,6 +75,50 @@ export function createCloudPoller(opts = {}) {
     log.info('[poll] 任务 ' + task.id + ' 完成(' + (result.ok ? 'ok':'fail') + ')');
   }
 
+  // 云端 /api/* 中继：手机经云端调本地 LAN 传输层，回环执行（20s 超时防 SSE 长连接挂死轮询）
+  async function processRelay(req) {
+    if (!req || !req.id || !req.path) return;
+    const q = req.query ? (req.query.startsWith('?') ? req.query : '?' + req.query) : '';
+    const url = lanBase + req.path + q;
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 20000);
+    try {
+      const r = await fetchImpl(url, {
+        method: req.method || 'GET',
+        headers: { authorization: 'Bearer ' + lanToken, 'content-type': 'application/json' },
+        body: (req.method === 'POST' && req.body) ? req.body : undefined,
+        signal: ac.signal,
+      });
+      const text = await r.text();
+      await http('/v1/relay/requests/' + encodeURIComponent(req.id) + '/result', {
+        method: 'POST', body: JSON.stringify({ status: 'done', resultStatus: r.status, resultBody: text }),
+      });
+      log.info('[poll] relay ' + req.method + ' ' + req.path + ' → ' + r.status);
+    } catch (e) {
+      try {
+        await http('/v1/relay/requests/' + encodeURIComponent(req.id) + '/result', {
+          method: 'POST', body: JSON.stringify({ status: 'error', resultStatus: 502, resultBody: JSON.stringify({ error: 'relay 执行失败: ' + String(e) }) }),
+        });
+      } catch (e2) { log.error('[poll] relay 回传失败: ' + e2.message); }
+    } finally { clearTimeout(t); }
+  }
+
+  // 云端 /api/* 中继快轮询：单独 1s 一次（比任务轮询快，降低手机云端延迟）
+  async function relayOnce() {
+    if (polling || running) return;
+    polling = true;
+    try {
+      const rr = await http('/v1/relay/requests?deviceId=' + encodeURIComponent(agentId));
+      const items = (rr && rr.items) || [];
+      for (const rq of items) {
+        running = true;
+        try { await processRelay(rq); } catch (e) { log.error('[poll] relay 处理失败: ' + e.message); }
+        finally { running = false; }
+      }
+    } catch (e) { /* 表未就绪/网络抖动忽略 */ }
+    finally { polling = false; }
+  }
+
   async function pollOnce() {
     if (polling || running) return;
     polling = true;
@@ -91,8 +138,17 @@ export function createCloudPoller(opts = {}) {
     finally { polling = false; }
   }
 
-  function start() { if (timer) return; pollOnce(); timer = setInterval(pollOnce, pollIntervalMs); }
-  function stop() { if (timer) { clearInterval(timer); timer = null; } }
+  function start() {
+    if (timer) return;
+    pollOnce();
+    timer = setInterval(pollOnce, pollIntervalMs);
+    relayOnce();
+    relayTimer = setInterval(relayOnce, 1000); // relay 快轮询
+  }
+  function stop() {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (relayTimer) { clearInterval(relayTimer); relayTimer = null; }
+  }
 
-  return { start, stop, pollOnce };
+  return { start, stop, pollOnce, relayOnce };
 }

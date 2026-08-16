@@ -1030,6 +1030,11 @@ svg { flex: none; }
             <span class="m-name">删除会话</span>
             <span class="m-desc">从列表移除</span>
           </button>
+          <button class="model-item" id="sessExportBtn" type="button">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span class="m-name">导出会话日志</span>
+            <span class="m-desc">查看/保存完整 Session log</span>
+          </button>
         </div>
       </div>
     </div>
@@ -2722,6 +2727,11 @@ svg { flex: none; }
     stopLiveFollow();
     if (!sid || !state.base || !state.token) return;
     state.followBase = Math.max(state.followBase || 0, Number(afterSeq) || 0);
+    // 云端模式（https）：中继为请求/响应无长连接，退化为 1.5s 增量轮询
+    if (/^https:\/\//i.test(state.base)) {
+      state.followPollT = setInterval(function () { pollFollowOnce(sid); }, 1500);
+      return;
+    }
     var ac = new AbortController();
     state.followAbort = ac;
     fetch(state.base.replace(/\/+$/, '') + '/api/events.stream?sessionId=' + enc(sid) + '&afterSeq=' + state.followBase, {
@@ -2757,7 +2767,19 @@ svg { flex: none; }
     });
   }
   function stopLiveFollow() {
+    if (state.followPollT) { clearInterval(state.followPollT); state.followPollT = null; }
     if (state.followAbort) { try { state.followAbort.abort(); } catch (e) {} state.followAbort = null; }
+  }
+  // 云端模式的增量轮询（退化为 SSE 的兜底）
+  async function pollFollowOnce(sid) {
+    if (!state.currentSess || state.currentSess.sessionId !== sid) return;
+    if (state.running || state.continuePending) return; // 本地流式时由 pollStream 处理
+    try {
+      var d = await api('/api/events?sessionId=' + enc(sid) + '&afterSeq=' + state.followBase, { timeoutMs: 6000 });
+      var items = (d && d.items) || [];
+      if (typeof d.lastSeq === 'number' && d.lastSeq > state.followBase) state.followBase = d.lastSeq;
+      items.forEach(function (ev) { handleLiveEvent(ev); });
+    } catch (e) { /* 网络抖动忽略 */ }
   }
   // 实时事件 → 消息/统计（复用 pollStream 的累积规则；只处理当前会话的新事件）
   function handleLiveEvent(ev) {
@@ -2861,6 +2883,7 @@ svg { flex: none; }
 
   // ============ 子代理 / 后台任务 chips（对标 DSH 桌面计数，可点开展开） ============
   var liveSubagents = [];
+  var liveJobs = {};       // sessionId -> events.mux session/jobs 帧（后台任务实时数据）
   var livePanelType = null; // 'subagents' | 'jobs' | null
   async function refreshLiveChips() {
     var sa = $('subagentChipLabel'), jc = $('jobsChipLabel');
@@ -2874,13 +2897,20 @@ svg { flex: none; }
         saCount = liveSubagents.length;
         saRun = liveSubagents.filter(function (a) { return a.activity === 'running' || a.activity === 'active'; }).length;
       } catch (e) { liveSubagents = []; }
+      // 后台任务：events.mux session/jobs 实时帧；无帧回退运行中会话
+      try {
+        var jd = await api('/api/dsh-jobs?sessionId=' + enc(state.currentSess.sessionId), { timeoutMs: 6000 });
+        liveJobs[state.currentSess.sessionId] = (jd && jd.items) || [];
+      } catch (e) { liveJobs[state.currentSess.sessionId] = []; }
     }
     sa.textContent = saCount + (state.locale === 'en' ? ' subagents' : ' 子代理');
-    // 后台任务：当前工作区运行中的会话（进行中的任务）
+    // 后台任务：真实 jobs 优先，其次运行中会话
+    var realJobs = (state.currentSess && liveJobs[state.currentSess.sessionId]) || [];
     var runSessions = state.sessions.filter(function (s) { return s.running; });
-    jc.textContent = runSessions.length + (state.locale === 'en' ? ' jobs' : ' 后台任务');
+    var jobCount = realJobs.length || runSessions.length;
+    jc.textContent = jobCount + (state.locale === 'en' ? ' jobs' : ' 后台任务');
     $('subagentChip').classList.toggle('has-live', saRun > 0);
-    $('jobsChip').classList.toggle('has-live', runSessions.length > 0);
+    $('jobsChip').classList.toggle('has-live', runSessions.length > 0 || realJobs.some(function (j) { return j.status === 'running' || j.status === 'active' || j.status === 'pending'; }));
     var hint = $('liveChipHint');
     if (hint) hint.textContent = (saRun || runSessions.length) ? (state.locale === 'en' ? '● running' : '● 有进行中') : '';
     if (livePanelType === 'subagents') renderLivePanel('subagents');
@@ -2895,12 +2925,46 @@ svg { flex: none; }
         var run = a.activity === 'running' || a.activity === 'active';
         var row = document.createElement('div');
         row.className = 'live-row' + (run ? ' run' : '');
-        var mode = a.mode ? (state.locale === 'en' ? a.mode : a.mode) : '';
-        row.innerHTML = '<span class="lr-dot"></span><span class="lr-t">' + esc(a.label || a.sessionId || 'subagent') + '</span>' +
+        var mode = a.mode ? a.mode : '';
+        var label = a.label || a.sessionId || 'subagent';
+        row.innerHTML = '<span class="lr-dot"></span><span class="lr-t">' + esc(label) + '</span>' +
           '<span class="lr-s">' + esc([run ? (state.locale === 'en' ? 'running' : '进行中') : (state.locale === 'en' ? 'idle' : '空闲'), mode, a.kind || ''].filter(Boolean).join(' · ')) + '</span>';
+        // 子代理控制：发消息 / 打断（subagent.prompt / subagent.interrupt）
+        if (a.sessionId && state.currentSess) {
+          var pmt = document.createElement('button');
+          pmt.className = 'drawer-del';
+          pmt.title = '发消息';
+          pmt.style.cssText = 'opacity:.7;position:static;display:grid;width:24px;height:24px';
+          pmt.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+          pmt.addEventListener('click', function () { subagentPromptUI(a); });
+          row.appendChild(pmt);
+          if (run) {
+            var intr = document.createElement('button');
+            intr.className = 'drawer-del';
+            intr.title = '打断';
+            intr.style.cssText = 'opacity:.7;position:static;display:grid;width:24px;height:24px;color:var(--red)';
+            intr.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+            intr.addEventListener('click', function () { subagentInterruptUI(a); });
+            row.appendChild(intr);
+          }
+        }
         body.appendChild(row);
       });
     } else {
+      // 后台任务：优先 events.mux 的 session/jobs 实时数据；没有帧时回退到运行中会话
+      var jobs = (state.currentSess && liveJobs[state.currentSess.sessionId]) ? liveJobs[state.currentSess.sessionId] : null;
+      if (jobs && jobs.length) {
+        jobs.forEach(function (j) {
+          var row = document.createElement('div');
+          row.className = 'live-row' + (j.status === 'running' || j.status === 'active' || j.status === 'pending' ? ' run' : '');
+          var meta = [j.kind || '', j.status || ''].filter(Boolean).join(' · ');
+          var label = j.label || j.title || j.kind || j.id || 'job';
+          row.innerHTML = '<span class="lr-dot"></span><span class="lr-t">' + esc(label) + '</span>' +
+            '<span class="lr-s">' + esc(meta || '') + '</span>';
+          body.appendChild(row);
+        });
+        return;
+      }
       var runSessions = state.sessions.filter(function (s) { return s.running; });
       if (!runSessions.length) { body.innerHTML = '<div class="live-empty">' + (state.locale === 'en' ? 'No background tasks' : '暂无后台任务') + '</div>'; return; }
       runSessions.forEach(function (s) {
@@ -2915,6 +2979,23 @@ svg { flex: none; }
         body.appendChild(row);
       });
     }
+  }
+  // 子代理发消息（subagent.prompt）
+  async function subagentPromptUI(a) {
+    var t = prompt('给子代理发消息：\n' + (a.label || a.sessionId), '');
+    if (!t || !t.trim() || !state.currentSess) return;
+    try {
+      var d = await api('/api/dsh-subagent-prompt', { method: 'POST', body: JSON.stringify({ parentSessionId: state.currentSess.sessionId, childSessionId: a.sessionId, text: t.trim() }), timeoutMs: 30000 });
+      toast((d && d.ok) ? (state.locale === 'en' ? 'Sent to subagent' : '已发给子代理') : ((d && d.error) || '发送失败'), !(d && d.ok));
+    } catch (e) { toast('发送失败：' + e.message, true); }
+  }
+  // 子代理打断（subagent.interrupt）
+  async function subagentInterruptUI(a) {
+    if (!state.currentSess) return;
+    try {
+      var d = await api('/api/dsh-subagent-interrupt', { method: 'POST', body: JSON.stringify({ parentSessionId: state.currentSess.sessionId, childSessionId: a.sessionId }), timeoutMs: 15000 });
+      toast((d && d.ok) ? (state.locale === 'en' ? 'Interrupted' : '已打断') : ((d && d.error) || '打断失败'), !(d && d.ok));
+    } catch (e) { toast('打断失败：' + e.message, true); }
   }
   function toggleLivePanel(type) {
     livePanelType = (livePanelType === type) ? null : type;
@@ -3166,6 +3247,23 @@ svg { flex: none; }
       $('fileEmpty').textContent = '加载失败：' + e.message;
       $('fileEmpty').classList.remove('hidden');
     }
+  }
+  // 纯文本查看（会话日志导出等，不走 /api/file）
+  function openTextViewer(title, content) {
+    state.editorReturn = state.editorReturn || 'paneFiles';
+    showPane('paneEditor');
+    $('editorPath').textContent = title || '文本';
+    $('editorMeta').textContent = (content ? content.length : 0) + ' 字符';
+    $('editorPre').textContent = content || '';
+  }
+  async function exportSessionLogUI(sess) {
+    if (!sess || !sess.sessionId) return;
+    try {
+      var d = await api('/api/dsh-session-export?sessionId=' + enc(sess.sessionId), { timeoutMs: 60000 });
+      if (!d || !d.ok) throw new Error((d && d.error) || '导出失败');
+      openTextViewer((sess.title || '会话') + ' · Session log', d.content || '');
+      toast(d.truncated ? '日志较大，已截断前 500KB（完整导出在电脑端）' : '已导出 ' + d.size + ' 字符');
+    } catch (e) { toast('导出失败：' + e.message, true); }
   }
   async function openFileViewer(fp) {
     state.editorReturn = state.editorReturn || 'paneFiles'; // 默认来自文件浏览器；设置页打开配置文件时覆盖
@@ -3877,6 +3975,7 @@ svg { flex: none; }
     $('sessForkBtn').addEventListener('click', function () { var s = sessSheetTarget; closeSessSheet(); if (s) forkSession(s); });
     $('sessRenameBtn').addEventListener('click', function () { var s = sessSheetTarget; closeSessSheet(); if (s) renameSession(s); });
     $('sessDelBtn').addEventListener('click', function () { var s = sessSheetTarget; closeSessSheet(); if (s) deleteSession(s); });
+    $('sessExportBtn').addEventListener('click', function () { var s = sessSheetTarget; closeSessSheet(); if (s) exportSessionLogUI(s); });
     // 任务清单：头部点击收起 / 展开
     $('todoHead').addEventListener('click', function () { $('todoPanel').classList.toggle('collapsed'); });
     // 子代理 / 后台任务 chips（展开面板）
