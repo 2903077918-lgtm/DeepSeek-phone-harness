@@ -1395,6 +1395,7 @@ svg { flex: none; }
       renderSettings();
       startApprovalPoll();
       await loadWorkspaces();
+      loadPresets(); // 模式（Agent 预设）无需会话，连接即加载
       // 对话界面优先：恢复上次工作区直接进对话页；没有则进对话页空态（顶栏点工作区名选择）
       var savedWsId = load('wsId', '');
       var savedIdx = -1;
@@ -2180,14 +2181,14 @@ svg { flex: none; }
       var hint = $('composerModelHint');
       if (hint) hint.textContent = (modelState.current && modelState.current.reasoningEffort ? ('· ' + modelState.current.reasoningEffort) : '') + (presetState.name ? ' · ' + presetState.name : '');
     } catch (e) { /* 模型接口不可用则隐藏 */ }
-    loadPresets(sid); // 同步加载模式（预设）
+    loadPresets(); // 同步加载模式（预设）
   }
 
   // ============ 模式切换（Agent 预设：标准/PTC/极简/创造） ============
   var presetState = { presets: [], current: null };
-  var presetNameMap = { 'standard': '标准模式', 'minimal': '极简模式', 'code': 'PTC 模式', 'cordis': '创造模式' };
-  async function loadPresets(sid) {
-    if (!sid) return;
+  var presetNameMap = { 'standard': '标准模式', 'minimal': '极简模式', 'code': 'PTC 模式', 'cordis': '创造模式', 'standard-high-fidelity': '稀压高保真' };
+  async function loadPresets() {
+    if (!state.base || !state.token) return;
     try {
       var d = await api('/api/dsh-presets', { timeoutMs: 8000 });
       if (!d || !d.ok) return;
@@ -2216,7 +2217,19 @@ svg { flex: none; }
     var list = $('presetList');
     list.textContent = '';
     if (!presetState.presets.length) {
+      list.innerHTML = '<div class="empty" style="padding:30px 10px">加载模式…</div>';
+      loadPresets().then(function () { renderPresetList(); });
+    } else {
+      renderPresetList();
+    }
+    $('presetMask').classList.remove('hidden');
+  }
+  function renderPresetList() {
+    var list = $('presetList');
+    list.textContent = '';
+    if (!presetState.presets.length) {
       list.innerHTML = '<div class="empty" style="padding:30px 10px">暂无可选模式</div>';
+      return;
     }
     presetState.presets.forEach(function (p) {
       var name = presetNameMap[p.id] || p.name || p.id;
