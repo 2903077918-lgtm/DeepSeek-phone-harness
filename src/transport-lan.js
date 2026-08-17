@@ -263,6 +263,16 @@ export function createLanTransport({ config, rootDir, executor, history, queue, 
         }
         return;
       }
+      // ---- 命令中心：执行 DSH 斜杠命令（typert commands/execute）----
+      // POST /api/dsh-command {sessionId, line} → executor.executeCommand
+      if (req.method === 'POST' && url.pathname === '/api/dsh-command') {
+        if (!auth(req, res)) return;
+        if (typeof executor.executeCommand !== 'function') { sendJson(res, 501, { ok: false, error: 'executor 不支持该能力' }); return; }
+        const body = await readBody(req);
+        const out = await executor.executeCommand(body.sessionId, body.line);
+        sendJson(res, out.ok ? 200 : 400, out);
+        return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/approvals') {
         if (!auth(req, res)) return;
         // 待审批 + 待回答提问（最新在前）；rpcId 为内部实现细节不外泄，提问用 questionKey 标识

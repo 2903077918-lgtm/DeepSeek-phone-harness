@@ -11,7 +11,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { DSH_CMD, TASK_TIMEOUT_MS, resolveApiKey } from './config.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchRpc, sleep, isoTime, historyToMessages, normPath, baseName, WEB_API_BASE } from './dsh-utils.js';
+import { fetchRpc, sleep, isoTime, historyToMessages, normPath, baseName, cryptoRandom, WEB_API_BASE } from './dsh-utils.js';
 import { createApprovalRelay } from './approval-relay.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -438,6 +438,31 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         return { ok: false, code: 'backend-unavailable', error: 'session.fork 失败: ' + String(e) };
       }
     },
+    // POST /api/dsh-command {sessionId, line}：执行 DSH 斜杠命令（typert commands/execute，payload {args:{agentId,line}}）
+    // 命令：/compact /export /feedback /goal /permission <preset> /plan /model —— 手机端权限切换、命令中心等走这里
+    async executeCommand(sessionId, line) {
+      const sid = String(sessionId || '').trim();
+      const l = String(line || '').trim();
+      if (!sid) return { ok: false, code: 'bad-request', error: 'sessionId 不能为空' };
+      if (!l) return { ok: false, code: 'bad-request', error: 'line 不能为空' };
+      try {
+        const resp = await fetch(WEB_API_BASE + '/api/commands/execute', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ type: 'client-request', rpcId: cryptoRandom(), method: 'commands/execute', payload: { args: { agentId: sid, line: l } } }),
+        });
+        if (!resp.ok) return { ok: false, code: 'gateway-unavailable', error: 'commands/execute HTTP ' + resp.status };
+        const json = await resp.json();
+        if (!json.result || !json.result.ok) {
+          const e = (json.result && json.result.error) || {};
+          return { ok: false, code: e.code || 'command-failed', error: e.message || '命令执行失败' };
+        }
+        const v = json.result.value || {};
+        return { ok: true, commandId: v.commandId, result: v.result };
+      } catch (e) {
+        return { ok: false, error: 'commands/execute 失败: ' + String(e) };
+      }
+    },
     // GET /api/dsh-skill?sessionId=：skill.list → 电脑上的技能列表（skill.list 是 scoped RPC，需 sessionId）
     async listSkills(sessionId) {
       const sid = String(sessionId || '').trim();
@@ -453,8 +478,7 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
         return { ok: false, code: 'backend-unavailable', error: 'skill.list 失败: ' + String(e) };
       }
     },
-    // ---- 目标（goal）：状态在 projections.values.goal；mutation 转发 goal.* ----
-    // GET /api/dsh-goals?sessionId=：读 projections 里的 goal 当前状态
+    // ---- 目标（goal）：状态在 projections.values.goal；mutation 转发 goal.* ----    // GET /api/dsh-goals?sessionId=：读 projections 里的 goal 当前状态
     // projections.values.goal 形如 {goal:{id,revision,objective,phase,maxGoalRounds}, roundsStarted,...}
     // → 拍平返回 {ok, goal: {id,revision,objective,phase,maxGoalRounds,...}, meta}
     async getSessionGoal(sessionId) {

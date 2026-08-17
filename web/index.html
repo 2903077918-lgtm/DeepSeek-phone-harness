@@ -2275,14 +2275,14 @@ svg { flex: none; }
 
   // ============ 命令中心（对标 DSH 桌面"命令"面板） ============
   // DSH 的斜杠命令：compact/export/feedback/goal/permission/plan/model。
-  // 有 HTTP RPC 或手机端等价功能的直接映射；其余（compact/feedback/plan）DSH 未暴露 HTTP，提示在电脑端操作。
+  // 均通过 typert commands/execute 执行（手机端经 /api/dsh-command 转发）。
   var CMD_DEFS = [
-    { name: 'compact', desc: 'Compact older conversation history', act: 'desktop' },
+    { name: 'compact', desc: 'Compact older conversation history', act: 'cmd' },
     { name: 'export', desc: 'Download this Session log', act: 'export' },
-    { name: 'feedback', desc: 'Record feedback about this session', act: 'desktop' },
+    { name: 'feedback', desc: 'Record feedback about this session', act: 'cmd' },
     { name: 'goal', desc: 'Set or view the goal for a long-running task', act: 'goal' },
     { name: 'permission', desc: 'Switch the permission preset', act: 'permission' },
-    { name: 'plan', desc: 'Enter or leave plan mode', act: 'desktop' },
+    { name: 'plan', desc: 'Enter or leave plan mode', act: 'cmd' },
     { name: 'model', desc: 'Select the model for this session', act: 'model' },
   ];
   function cmdDesc(name) {
@@ -2295,14 +2295,13 @@ svg { flex: none; }
     var note = document.createElement('div');
     note.className = 'empty';
     note.style.cssText = 'font-size:11px;color:var(--text-3);padding:2px 4px 10px;text-align:left;line-height:1.6';
-    note.textContent = '对标 DSH 桌面命令面板。带 "电脑端" 标记的命令需在 DSH 桌面操作。';
+    note.textContent = '对标 DSH 桌面命令面板。点击命令将在该会话执行（等效于电脑端输入斜杠命令）。';
     list.appendChild(note);
     CMD_DEFS.forEach(function (c) {
       var it = document.createElement('button');
       it.type = 'button';
       it.className = 'model-item stack';
-      var tag = c.act === 'desktop' ? '<span class="m-badge">电脑端</span>' : '';
-      it.innerHTML = '<span class="m-name"><span class="m-cmd">/' + esc(c.name) + '</span>' + tag + '</span>' +
+      it.innerHTML = '<span class="m-name"><span class="m-cmd">/' + esc(c.name) + '</span></span>' +
         '<span class="m-desc">' + esc(c.desc) + '</span>';
       it.addEventListener('click', function () { runCmd(c); });
       list.appendChild(it);
@@ -2311,14 +2310,27 @@ svg { flex: none; }
   }
   function runCmd(c) {
     $('cmdMask').classList.add('hidden');
-    if (c.act === 'desktop') {
-      toast(state.locale === 'en' ? ('/' + c.name + ' is available on the DSH desktop') : ('/ ' + c.name + ' 需在电脑端 DSH 操作（输入 /' + c.name + '）'), true);
-      return;
-    }
     if (c.act === 'export') { if (state.currentSess) exportSessionLogUI(state.currentSess); else toast('请先选择会话', true); return; }
     if (c.act === 'goal') { if (state.currentSess) { closeDrawer(); showPane('paneGoal'); loadGoal(); } else toast('请先选择会话', true); return; }
     if (c.act === 'permission') { openPermSheet(); return; }
     if (c.act === 'model') { openModelSheet(); return; }
+    // act === 'cmd'：真正执行斜杠命令（compact/feedback/plan）
+    if (c.act === 'cmd') { runSlashCommand('/' + c.name); return; }
+  }
+  // 执行 DSH 斜杠命令（typert commands/execute，经 agent /api/dsh-command 转发）
+  async function runSlashCommand(line) {
+    if (!state.currentSess) { toast('请先选择会话', true); return; }
+    try {
+      var d = await api('/api/dsh-command', { method: 'POST', body: JSON.stringify({ sessionId: state.currentSess.sessionId, line: line }), timeoutMs: 30000 });
+      if (d && d.ok && d.result) {
+        toast((d.result.text || line + ' 已执行').slice(0, 120));
+        renderTimeline(); renderPermPill();
+      } else {
+        toast((d && d.error) || '命令执行失败', true);
+      }
+    } catch (e) {
+      toast('命令执行失败：' + e.message, true);
+    }
   }
   function renderCmdChip() {
     var b = $('cmdChipLabel');
@@ -2493,17 +2505,37 @@ svg { flex: none; }
     var sess = state.currentSess;
     var cur = sess && sess.permissions && sess.permissions.currentValue;
     permDefs.forEach(function (pd) {
-      var it = document.createElement('div');
+      var it = document.createElement('button');
+      it.type = 'button';
       it.className = 'model-item' + (cur === pd.v ? ' on' : '');
       it.innerHTML = '<span class="m-name">' + pd.n + '</span>' +
         '<span class="m-desc">' + pd.d + '</span>' +
         (cur === pd.v ? '<span class="m-check">&#10003;</span>' : '');
+      // 手机端直接切换权限（DSH /permission 命令）——电脑端 DSH 权限会跟着变
+      it.addEventListener('click', function () { switchPermission(pd.v, pd.n); });
       list.appendChild(it);
     });
     $('permNote').textContent = cur
-      ? '当前会话为「' + (permNameMap[cur] || cur) + '」，由电脑端 DSH 会话决定；切换权限请在电脑端进行。'
-      : '当前没有会话。新建会话后，此处显示该会话的权限等级（由电脑端 DSH 决定）。';
+      ? '当前为「' + (permNameMap[cur] || cur) + '」。点击上方任意档位即可切换，电脑端 DSH 同步生效。'
+      : '当前没有会话。新建会话后，此处显示并可切换该会话的权限。';
     $('permMask').classList.remove('hidden');
+  }
+  // 手机端切换会话权限：/permission <preset> → commands/execute（DSH 权限随之变更）
+  async function switchPermission(v, label) {
+    if (!state.currentSess) { toast('请先选择会话', true); return; }
+    try {
+      var d = await api('/api/dsh-command', { method: 'POST', body: JSON.stringify({ sessionId: state.currentSess.sessionId, line: '/permission ' + v }), timeoutMs: 15000 });
+      if (d && d.ok) {
+        // 更新本地权限显示 + 刷新会话投影
+        renderPermPill();
+        refreshStatLive();
+        toast('已切换为「' + label + '」（电脑端 DSH 同步生效）');
+      } else {
+        toast((d && d.error) || '权限切换失败', true);
+      }
+    } catch (e) {
+      toast('权限切换失败：' + e.message, true);
+    }
   }
   function openModelSheet() {
     var list = $('modelList');
