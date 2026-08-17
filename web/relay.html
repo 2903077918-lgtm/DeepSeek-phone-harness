@@ -1365,6 +1365,7 @@ svg { flex: none; }
     // 实时跟随（SSE 推送，对标 DSH events.mux）：打开会话即长连接收事件，替代 800ms 轮询
     followAbort: null,        // 当前 SSE 连接的 AbortController
     liveMsg: null,            // 正在流式的实时助手消息
+    userScrolled: false,      // 用户主动上滑离开底部（暂停实时自动滚动，回到底部恢复跟随）
     followBase: 0,            // SSE 已消费到的事件 seq
     statusTimer: null,        // 会话状态（轮/步/耗时/权限）周期刷新
     busyEnter: load('busyEnter', 'steer'), // 繁忙时 Enter：steer 插话 / queue 排队（默认同 DSH ui-conversation.busyEnter）
@@ -1768,6 +1769,7 @@ svg { flex: none; }
     state.msgs = [];
     state.historyFirstSeq = null; // 已加载历史的最早事件 seq（"加载更早"用 beforeSeq）
     state.historyHasMore = false; // 是否还有更早消息
+    state.userScrolled = false;   // 新会话恢复自动跟随
     appendMsg('asst', '加载会话历史…', { plain: true });
     try {
       var d = await api('/api/dsh-history?sessionId=' + enc(sess.sessionId) + '&maxMessages=60', { timeoutMs: 15000 });
@@ -1895,7 +1897,8 @@ svg { flex: none; }
     var tp = $('trajPanel');
     if (tp && !tp.classList.contains('hidden')) renderTrajectory();
     applyLocale();
-    tl.scrollTop = tl.scrollHeight;
+    // 用户上滑查看历史时暂停自动滚底（回到底部由 scroll 监听恢复跟随）
+    if (!state.userScrolled) tl.scrollTop = tl.scrollHeight;
   }
   // 最下方统计条：token 用量 / 缓存命中
   function fmtTok(n) {
@@ -3254,7 +3257,7 @@ svg { flex: none; }
         card.querySelector('[data-act="reject"]').addEventListener('click', function () { respondApproval(a, 'rejected'); });
       }
       tl.appendChild(card);
-      tl.scrollTop = tl.scrollHeight;
+      if (!state.userScrolled) tl.scrollTop = tl.scrollHeight;
     });
   }
   // ---- ask_user_question 提问卡（DSH 标准 preset 的 agent 会反问，必须能回答否则任务卡死）----
@@ -4283,6 +4286,13 @@ svg { flex: none; }
         }
         renderAttachRow();
       } catch (e) { toast(e.message, true); }
+    });
+    // 时间线滚动：用户上滑离开底部 → 暂停实时自动滚底；回到底部 → 恢复跟随
+    $('timeline').addEventListener('scroll', function () {
+      var tl = this;
+      var nearBottom = tl.scrollTop + tl.clientHeight >= tl.scrollHeight - 80;
+      if (!nearBottom && !state.userScrolled) state.userScrolled = true;
+      else if (nearBottom && state.userScrolled) state.userScrolled = false;
     });
     $('sessSearch').addEventListener('input', function () {
       state.sessQuery = this.value.trim().toLowerCase();
