@@ -653,6 +653,9 @@ svg { flex: none; }
 .model-item.stack .m-name { width: 100%; white-space: normal; line-height: 1.4; }
 .model-item.stack .m-desc { line-height: 1.5; }
 .model-item.stack .m-check { position: absolute; right: 12px; top: 12px; }
+/* 命令中心：斜杠命令名 + 电脑端标记 */
+.model-item.stack .m-cmd { font-family: var(--mono); font-weight: 700; }
+.model-item.stack .m-badge { float: right; font-size: 10px; font-weight: 500; color: var(--text-3); border: 1px solid var(--border-strong); border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
 
 /* 思考过程折叠块（对标 DSH 的推理过程展示） */
 .think-block { margin: 6px 0 8px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.03); overflow: hidden; }
@@ -948,6 +951,10 @@ svg { flex: none; }
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
           <span id="jobsChipLabel">0 后台任务</span>
         </button>
+        <button class="chip live-chip" id="cmdChip" type="button" title="命令中心">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          <span id="cmdChipLabel">命令</span>
+        </button>
         <span class="live-chip-hint" id="liveChipHint"></span>
       </div>
       <div class="live-panel hidden" id="livePanel">
@@ -1001,6 +1008,14 @@ svg { flex: none; }
         </div>
       </footer>
       <div class="chat-stat hidden" id="chatStat"></div>
+    </div>
+
+    <!-- 命令中心面板（对标 DSH 桌面"命令"按钮：/compact /export /feedback /goal /permission /plan /model） -->
+    <div class="sheet-mask hidden" id="cmdMask">
+      <div class="sheet">
+        <div class="sheet-head"><div class="sheet-title">命令中心</div><button class="icon-btn" id="cmdClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+        <div class="sheet-body" id="cmdList"></div>
+      </div>
     </div>
 
     <!-- 模型选择面板（对标 DSH Web GUI 的模型选择） -->
@@ -2253,6 +2268,58 @@ svg { flex: none; }
         .replace(/\*([^*]+)\*/g, '<em>$1</em>')
         .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
     }
+  }
+
+  // ============ 命令中心（对标 DSH 桌面"命令"面板） ============
+  // DSH 的斜杠命令：compact/export/feedback/goal/permission/plan/model。
+  // 有 HTTP RPC 或手机端等价功能的直接映射；其余（compact/feedback/plan）DSH 未暴露 HTTP，提示在电脑端操作。
+  var CMD_DEFS = [
+    { name: 'compact', desc: 'Compact older conversation history', act: 'desktop' },
+    { name: 'export', desc: 'Download this Session log', act: 'export' },
+    { name: 'feedback', desc: 'Record feedback about this session', act: 'desktop' },
+    { name: 'goal', desc: 'Set or view the goal for a long-running task', act: 'goal' },
+    { name: 'permission', desc: 'Switch the permission preset', act: 'permission' },
+    { name: 'plan', desc: 'Enter or leave plan mode', act: 'desktop' },
+    { name: 'model', desc: 'Select the model for this session', act: 'model' },
+  ];
+  function cmdDesc(name) {
+    var d = CMD_DEFS.find(function (c) { return c.name === name; });
+    return d ? d.desc : '';
+  }
+  function openCmdSheet() {
+    var list = $('cmdList');
+    list.textContent = '';
+    var note = document.createElement('div');
+    note.className = 'empty';
+    note.style.cssText = 'font-size:11px;color:var(--text-3);padding:2px 4px 10px;text-align:left;line-height:1.6';
+    note.textContent = '对标 DSH 桌面命令面板。带 "电脑端" 标记的命令需在 DSH 桌面操作。';
+    list.appendChild(note);
+    CMD_DEFS.forEach(function (c) {
+      var it = document.createElement('button');
+      it.type = 'button';
+      it.className = 'model-item stack';
+      var tag = c.act === 'desktop' ? '<span class="m-badge">电脑端</span>' : '';
+      it.innerHTML = '<span class="m-name"><span class="m-cmd">/' + esc(c.name) + '</span>' + tag + '</span>' +
+        '<span class="m-desc">' + esc(c.desc) + '</span>';
+      it.addEventListener('click', function () { runCmd(c); });
+      list.appendChild(it);
+    });
+    $('cmdMask').classList.remove('hidden');
+  }
+  function runCmd(c) {
+    $('cmdMask').classList.add('hidden');
+    if (c.act === 'desktop') {
+      toast(state.locale === 'en' ? ('/' + c.name + ' is available on the DSH desktop') : ('/ ' + c.name + ' 需在电脑端 DSH 操作（输入 /' + c.name + '）'), true);
+      return;
+    }
+    if (c.act === 'export') { if (state.currentSess) exportSessionLogUI(state.currentSess); else toast('请先选择会话', true); return; }
+    if (c.act === 'goal') { if (state.currentSess) { closeDrawer(); showPane('paneGoal'); loadGoal(); } else toast('请先选择会话', true); return; }
+    if (c.act === 'permission') { openPermSheet(); return; }
+    if (c.act === 'model') { openModelSheet(); return; }
+  }
+  function renderCmdChip() {
+    var b = $('cmdChipLabel');
+    if (b) b.textContent = state.locale === 'en' ? 'Commands' : '命令';
   }
 
   // ============ 模型选择（对标 DSH Web GUI） ============
@@ -3702,6 +3769,7 @@ svg { flex: none; }
     '设置': 'Settings', '文件': 'Files', '终端': 'Terminal', '任务': 'Tasks', '目标': 'Goals', '技能': 'Skills',
     '默认 Agent 预设': 'Default agent preset', '之后新建的会话使用该模式': 'Used for newly created sessions', '已设置默认 Agent 预设': 'Default agent preset set', '网页搜索': 'Web search', '网页搜索（web-search-deepseek）': 'Web search (web-search-deepseek)', 'DSH 网页检索工具的 DeepSeek 配置': 'DeepSeek config for DSH web search tool', '单次网页检索最大 token': 'Max tokens per web search', '每任务最多检索次数': 'Max uses per task', 'API 密钥环境变量': 'API key env var', '保存网页搜索配置': 'Save web search config', '写入电脑端 DSH 设置': 'Write to DSH settings on your PC', '已保存网页搜索配置': 'Web search config saved',
     '子代理': 'Subagents', '连接设置': 'Connection', '选择工作区': 'Select workspace', '进行中': 'Running',
+    '命令中心': 'Command center', '命令': 'Commands', '电脑端': 'Desktop',
     '搜索': 'Search', '搜索轨迹': 'Search trajectory', '条': 'items', '暂无轨迹': 'No trajectory', '无匹配结果': 'No matches',
     '对话': 'Chat', '轨迹': 'Trajectory', '切换工作区': 'Switch workspace', '返回': 'Back', '刷新': 'Refresh', '重连': 'Reconnect',
     '加载更早消息': 'Load earlier messages', '输入任务，交给电脑上的 DSH…': 'Send a task to DSH on your PC…', '停止': 'Stop', '发送': 'Send',
@@ -4200,6 +4268,9 @@ svg { flex: none; }
     // 子代理 / 后台任务 chips（展开面板）
     $('subagentChip').addEventListener('click', function () { toggleLivePanel('subagents'); });
     $('jobsChip').addEventListener('click', function () { toggleLivePanel('jobs'); });
+    $('cmdChip').addEventListener('click', openCmdSheet);
+    $('cmdClose').addEventListener('click', function () { $('cmdMask').classList.add('hidden'); });
+    $('cmdMask').addEventListener('click', function (e) { if (e.target === $('cmdMask')) $('cmdMask').classList.add('hidden'); });
     // 图片附件
     $('addBtn').addEventListener('click', function () { $('fileInput').click(); });
     $('fileInput').addEventListener('change', async function () {
