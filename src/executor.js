@@ -774,7 +774,7 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
 
 // ============ 多 Agent 路由：复杂代码任务 → Codex；review/其他 → DSH ============
 // 供 transport 的 POST /api/route-task 使用（手机端发任务时自动分派执行引擎）。
-const CODEX_TIMEOUT_MS = 5 * 60 * 1000; // Codex 复杂任务最长 5 分钟
+const CODEX_TIMEOUT_MS = 10 * 60 * 1000; // Codex 复杂任务最长 10 分钟
 
 // 复杂代码任务 → Codex CLI headless（codex exec --dangerously-bypass-approvals-and-sandbox -C <cwd> <prompt>）
 // 返回 {ok, exitCode, stdout, stderr}；超时/启动失败 → {ok:false, error}
