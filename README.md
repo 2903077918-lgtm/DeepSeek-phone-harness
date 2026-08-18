@@ -8,7 +8,31 @@
 
 `Node.js` · `零依赖` · `Cloudflare Workers` · `WebCrypto E2EE`
 
+[![GitHub Repo stars](https://img.shields.io/github/stars/2903077918-lgtm/DeepSeek-phone-harness?style=for-the-badge&label=STARS)](https://github.com/2903077918-lgtm/DeepSeek-phone-harness/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](./LICENSE)
+[![Discussions](https://img.shields.io/badge/Discussions-online-green?style=for-the-badge)](https://github.com/2903077918-lgtm/DeepSeek-phone-harness/discussions)
+
+<a href="https://github.com/2903077918-lgtm/DeepSeek-phone-harness/releases/download/v0.4.0/promo.mp4">
+  <img src="https://raw.githubusercontent.com/2903077918-lgtm/DeepSeek-phone-harness/main/docs/promotion/cover-s7.png"
+       alt="DeepSeek Phone Harness — 31s 宣传片" width="100%" style="border-radius:18px">
+</a>
+
+**▶ 点击上方图片观看 31 秒宣传片** · **Phone in hand. Computer at your command. 手机在手，电脑随行**
+
 </div>
+
+---
+
+## ⭐ 觉得有用？点个 Star，就是对这个开源项目最大的支持
+
+```bash
+# 三分钟跑起来
+git clone https://github.com/2903077918-lgtm/DeepSeek-phone-harness
+cd DeepSeek-phone-harness && cp config.example.json config.json
+node agent.mjs --mode=both
+```
+
+手机 Tailscale 连上电脑，打开 `http://<电脑IP>:8788/`，开工。任意网络（4G/5G/WiFi）都能用，不需要公网 IP。
 
 ---
 
