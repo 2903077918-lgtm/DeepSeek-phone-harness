@@ -765,5 +765,102 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
     } catch { /* 通知失败不阻断 */ }
   }
   executor.notifyTaskDone = notifyTaskDone;
+  executor.runCodex = runCodex;
+  executor.routeTask = routeTask;
+  executor.startCodex = startCodex;
+  executor.getCodexTask = getCodexTask;
   return executor;
+}
+
+// ============ 多 Agent 路由：复杂代码任务 → Codex；review/其他 → DSH ============
+// 供 transport 的 POST /api/route-task 使用（手机端发任务时自动分派执行引擎）。
+const CODEX_TIMEOUT_MS = 5 * 60 * 1000; // Codex 复杂任务最长 5 分钟
+
+// 复杂代码任务 → Codex CLI headless（codex exec --dangerously-bypass-approvals-and-sandbox -C <cwd> <prompt>）
+// 返回 {ok, exitCode, stdout, stderr}；超时/启动失败 → {ok:false, error}
+async function runCodex(cwd, prompt, timeoutMs = CODEX_TIMEOUT_MS) {
+  const dir = String(cwd || ROOT_DIR).trim();
+  const line = String(prompt || '').trim();
+  if (!line) return { ok: false, error: 'prompt 不能为空' };
+  return new Promise((resolve) => {
+    let child;
+    const bin = resolveCodexJs() || 'codex'; // node 入口 js；找不到则回退 'codex'（报错更清晰）
+    try {
+      const args = ['exec', '--dangerously-bypass-approvals-and-sandbox', '-C', dir, line];
+      child = bin.endsWith('.js')
+        ? spawn('node', [bin, ...args], { cwd: dir, windowsHide: true })
+        : spawn(bin, args, { cwd: dir, windowsHide: true });
+    } catch (e) {
+      resolve({ ok: false, error: 'codex 启动失败: ' + e.message });
+      return;
+    }
+    let out = '', err = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { child.kill('SIGKILL'); } catch { /* 已退出 */ }
+    }, timeoutMs);
+    child.stdout.on('data', (d) => { out += String(d); });
+    child.stderr.on('data', (d) => { err += String(d); });
+    child.on('error', (e) => { clearTimeout(timer); resolve({ ok: false, error: 'codex 运行错误: ' + e.message }); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) resolve({ ok: false, error: 'codex 超时（> ' + Math.round(timeoutMs / 1000) + 's）', timedOut: true });
+      else resolve({ ok: code === 0, exitCode: code, stdout: out, stderr: err });
+    });
+  });
+}
+
+// 自动路由判定：返回 'codex' | 'dsh'
+// 规则（保守，避免误判破坏现有 DSH 工作流）：
+//   显式要求用 codex（"用codex / 交给codex / codex 帮我"）→ codex
+//   review / 审查 / 检查 类 → dsh（简单 review 用 DSH）
+//   其余 → dsh
+function routeTask(task) {
+  const t = String(task || '').toLowerCase();
+  if (/\bcodex\b|用\s*codex|交给\s*codex|让\s*codex/.test(t)) return 'codex';
+  return 'dsh';
+}
+
+// 异步 Codex 任务：立即返回 taskId，后台跑 codex exec，完成时存结果 + 推送通知（手机端轮询/推送收结果）
+const codexTasks = new Map();
+let codexSeq = 0;
+function startCodex(cwd, task) {
+  const id = 'codex-' + (++codexSeq) + '-' + Date.now().toString(36);
+  const rec = { id, status: 'running', startedAt: Date.now(), task: String(task || '').slice(0, 200) };
+  codexTasks.set(id, rec);
+  runCodex(cwd, task).then((res) => {
+    rec.status = res.ok ? 'done' : 'error';
+    rec.result = res;
+    rec.finishedAt = Date.now();
+    try {
+      if (pushNotifier) pushNotifier.notify({ kind: 'task-done', sessionId: '', ok: !!res.ok, summary: '[Codex] ' + rec.task });
+    } catch { /* 通知失败不阻断 */ }
+  }).catch((e) => {
+    rec.status = 'error'; rec.result = { ok: false, error: String(e) }; rec.finishedAt = Date.now();
+  });
+  return rec;
+}
+function getCodexTask(id) {
+  const rec = codexTasks.get(String(id || ''));
+  if (!rec) return null;
+  return { id: rec.id, status: rec.status, task: rec.task, startedAt: rec.startedAt, finishedAt: rec.finishedAt, result: rec.result || null };
+}
+
+// 解析 codex CLI 的 node 入口（npm 全局的 codex.cmd wrapper → 实际 bin 脚本），避免 spawn ENOENT
+let _codexJs; // undefined = 未解析；null = 解析失败；string = 入口路径
+function resolveCodexJs() {
+  if (_codexJs !== undefined) return _codexJs;
+  _codexJs = null;
+  try {
+    const where = execFileSync('where', ['codex'], { encoding: 'utf8' });
+    const cmdPath = String(where).split(/\r?\n/).map((s) => s.trim()).find((l) => /codex\.cmd$/i.test(l));
+    if (cmdPath) {
+      const content = readFileSync(cmdPath, 'utf8');
+      const m = /"([^"]*node_modules[^"]*)"\s*%/.exec(content);
+      const ref = m ? m[1] : null;
+      if (ref) _codexJs = ref.replace(/%dp0%/gi, path.dirname(cmdPath));
+    }
+  } catch { _codexJs = null; }
+  return _codexJs;
 }

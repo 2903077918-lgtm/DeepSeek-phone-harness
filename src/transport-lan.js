@@ -273,6 +273,30 @@ export function createLanTransport({ config, rootDir, executor, history, queue, 
         sendJson(res, out.ok ? 200 : 400, out);
         return;
       }
+      // ---- 多 Agent 自动路由：复杂任务→Codex（codex exec 异步），review/其他→DSH ----
+      // POST /api/route-task {sessionId, task, cwd} → 判定引擎；codex 异步提交返回 taskId，dsh 返回 useExisting 走原 /api/dsh-continue
+      if (req.method === 'POST' && url.pathname === '/api/route-task') {
+        if (!auth(req, res)) return;
+        const body = await readBody(req);
+        const task = String(body.task || '').trim();
+        if (!task) { sendJson(res, 400, { ok: false, error: 'task 不能为空' }); return; }
+        const engine = executor.routeTask(task);
+        if (engine === 'codex') {
+          const rec = executor.startCodex(body.cwd, task);
+          sendJson(res, 200, { engine: 'codex', accepted: true, taskId: rec.id });
+          return;
+        }
+        sendJson(res, 200, { engine: 'dsh', useExisting: true });
+        return;
+      }
+      // GET /api/codex-result?taskId= → Codex 异步任务状态/结果
+      if (req.method === 'GET' && url.pathname === '/api/codex-result') {
+        if (!auth(req, res)) return;
+        const rec = executor.getCodexTask(url.searchParams.get('taskId') || '');
+        if (!rec) { sendJson(res, 404, { ok: false, error: '任务不存在' }); return; }
+        sendJson(res, 200, { ok: true, ...rec });
+        return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/approvals') {
         if (!auth(req, res)) return;
         // 待审批 + 待回答提问（最新在前）；rpcId 为内部实现细节不外泄，提问用 questionKey 标识

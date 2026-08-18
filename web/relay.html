@@ -2706,6 +2706,43 @@ svg { flex: none; }
     }
     if (!state.currentWs) { toast('请先选择工作区', true); return; }
 
+    // ---- 多 Agent 自动路由：探测引擎，Codex 复杂任务走异步执行，其余走 DSH ----
+    var route = null;
+    try {
+      var wd = (state.currentWs && state.currentWs.path) || undefined;
+      route = await api('/api/route-task', { method: 'POST', body: JSON.stringify({ task: text, cwd: wd }), timeoutMs: 8000 });
+    } catch (e) { /* 路由探测失败则默认 DSH */ }
+    if (route && route.engine === 'codex' && route.taskId) {
+      state.msgs.push({ role: 'user', text: text, time: new Date().toISOString() });
+      input.value = '';
+      state.running = true;
+      stopLiveFollow(); state.liveMsg = null; updateRunUI();
+      var cmsg = { role: 'asst', kind: 'asst', text: '已提交 Codex 执行…（' + route.taskId + '）', time: new Date().toISOString(), _codex: true };
+      state.msgs.push(cmsg);
+      renderTimeline();
+      var tid = route.taskId;
+      var final = null;
+      var t0 = Date.now();
+      while (Date.now() - t0 < 360000) {
+        await new Promise((r) => setTimeout(r, 3000));
+        try {
+          var rr = await api('/api/codex-result?taskId=' + enc(tid), { timeoutMs: 8000 });
+          if (rr && (rr.status === 'done' || rr.status === 'error')) { final = rr; break; }
+        } catch (e2) { /* 查询失败继续 */ }
+      }
+      if (final && final.status === 'done') {
+        cmsg.text = String(final.result && (final.result.stdout || '') ).trim() || '（Codex 完成，无输出）';
+      } else if (final) {
+        cmsg.text = String((final.result && final.result.error) || 'Codex 执行出错');
+        cmsg.ok = false;
+      } else {
+        cmsg.text = 'Codex 执行超时（>6 分钟）';
+        cmsg.ok = false;
+      }
+      state.running = false; updateRunUI(); renderTimeline();
+      return;
+    }
+
     // 若打断：结束旧的流式助手消息，保留其已完成内容
     if (interrupt) {
       for (var k = state.msgs.length - 1; k >= 0; k--) {
