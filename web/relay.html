@@ -656,6 +656,18 @@ svg { flex: none; }
 /* 引擎选择：禁用项置灰 + 引擎 pill 强调色 */
 .model-item.disabled { opacity: 0.45; }
 .engine-pill { color: var(--blue-2); border-color: rgba(64,112,224,0.45); background: rgba(64,112,224,0.10); }
+/* 引擎状态徽章：可用=绿，未就绪=红 */
+.model-item .m-badge.ok { border-color: rgba(62,155,111,0.5); color: var(--green); }
+.model-item .m-badge.no { border-color: rgba(216,79,79,0.45); color: var(--red); }
+/* 任务历史 */
+.hist-row { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; background: var(--bg-el); }
+.hist-row .h-top { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-3); }
+.hist-row .h-top .m-badge { margin-left: 0; }
+.hist-row .h-top .m-badge.run { color: var(--blue-2); border-color: rgba(64,112,224,0.45); }
+.hist-row .h-engine { font-family: var(--mono); font-weight: 600; color: var(--text-2); }
+.hist-row .h-time { margin-left: auto; }
+.hist-row .h-task { font-size: 12.5px; color: var(--text); margin-top: 5px; word-break: break-word; }
+.hist-row .h-res { font-size: 11px; color: var(--text-3); margin-top: 4px; word-break: break-word; max-height: 44px; overflow: hidden; }
 /* 命令中心：斜杠命令名 + 电脑端标记 */
 .model-item.stack .m-cmd { font-family: var(--mono); font-weight: 700; }
 .model-item.stack .m-badge { float: right; font-size: 10px; font-weight: 500; color: var(--text-3); border: 1px solid var(--border-strong); border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
@@ -1029,6 +1041,14 @@ svg { flex: none; }
       <div class="sheet">
         <div class="sheet-head"><div class="sheet-title">执行引擎</div><button class="icon-btn" id="engineClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
         <div class="sheet-body" id="engineList"></div>
+      </div>
+    </div>
+
+    <!-- 统一任务历史（跨引擎） -->
+    <div class="sheet-mask hidden" id="histMask">
+      <div class="sheet">
+        <div class="sheet-head"><div class="sheet-title">任务历史</div><button class="icon-btn" id="histClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+        <div class="sheet-body" id="histList"></div>
       </div>
     </div>
 
@@ -2311,18 +2331,50 @@ svg { flex: none; }
     var note = document.createElement('div');
     note.className = 'empty';
     note.style.cssText = 'font-size:11px;color:var(--text-3);padding:2px 4px 10px;text-align:left;line-height:1.6';
-    note.textContent = '选择发任务用哪个 agent 执行（聚合平台）。Claude / Cline 需在电脑端安装对应 CLI。';
+    note.textContent = '选择发任务用哪个 agent 执行（聚合平台）。状态为各引擎在本机的可用情况。';
     list.appendChild(note);
-    ENGINE_DEFS.forEach(function (e) {
-      var it = document.createElement('button');
-      it.type = 'button';
-      it.className = 'model-item stack' + (state.engine === e.id ? ' on' : '') + (e.disabled ? ' disabled' : '');
-      it.innerHTML = '<span class="m-name">' + esc(e.n) + (state.engine === e.id ? '<span class="m-check">&#10003;</span>' : '') + '</span>' +
-        '<span class="m-desc">' + esc(e.d) + '</span>';
-      if (!e.disabled) it.addEventListener('click', function () { selectEngine(e); });
-      list.appendChild(it);
-    });
+    list.appendChild(loadingElEngine());
     $('engineMask').classList.remove('hidden');
+    loadEngineStatus(function (byId) {
+      list.querySelectorAll('.engine-item-loading') && Array.prototype.forEach.call(list.querySelectorAll('.engine-item-loading'), function (el) { el.remove(); });
+      ENGINE_DEFS.forEach(function (e) {
+        var info = byId[e.id] || null;
+        var available = info ? !!info.available : !e.disabled;
+        var statusTxt = info ? (info.available ? (info.version ? info.version : '可用') : (info.note || '未就绪')) : e.d;
+        var it = document.createElement('button');
+        it.type = 'button';
+        it.className = 'model-item stack' + (state.engine === e.id ? ' on' : '') + (available ? '' : ' disabled');
+        it.innerHTML =
+          '<span class="m-name">' + esc(e.n) +
+            (state.engine === e.id ? '<span class="m-check">&#10003;</span>' : '') +
+            '<span class="m-badge ' + (available ? 'ok' : 'no') + '">' + (available ? '可用' : '未就绪') + '</span>' +
+          '</span>' +
+          '<span class="m-desc">' + esc(statusTxt) + '</span>';
+        if (available) it.addEventListener('click', function () { selectEngine(e); });
+        list.appendChild(it);
+      });
+      // 底部：任务历史入口
+      var hist = document.createElement('button');
+      hist.type = 'button';
+      hist.className = 'model-item stack';
+      hist.innerHTML = '<span class="m-name">任务历史</span><span class="m-desc">查看跨引擎的发任务记录</span>';
+      hist.addEventListener('click', openTaskHistory);
+      list.appendChild(hist);
+    });
+  }
+  function loadingElEngine() {
+    var d = document.createElement('div');
+    d.className = 'engine-item-loading empty';
+    d.style.cssText = 'font-size:11px;color:var(--text-3);padding:10px 4px';
+    d.textContent = '检查引擎状态…';
+    return d;
+  }
+  function loadEngineStatus(cb) {
+    api('/api/engines', { timeoutMs: 10000 }).then(function (d) {
+      var byId = {};
+      if (d && d.ok && d.engines) { d.engines.forEach(function (e) { byId[e.id] = e; }); }
+      cb(byId || {});
+    }).catch(function () { cb({}); });
   }
   function selectEngine(e) {
     state.engine = e.id;
@@ -2330,6 +2382,36 @@ svg { flex: none; }
     renderEnginePill();
     $('engineMask').classList.add('hidden');
     toast(state.locale === 'en' ? ('Engine: ' + e.n) : ('执行引擎：' + e.n));
+  }
+  // 统一任务历史（跨引擎：DSH / Codex / Claude / ...）
+  function openTaskHistory() {
+    $('engineMask').classList.add('hidden');
+    $('histMask').classList.remove('hidden');
+    var list = $('histList');
+    list.innerHTML = '<div class="empty" style="padding:30px 10px">加载中…</div>';
+    api('/api/task-history', { timeoutMs: 10000 }).then(function (d) {
+      var items = (d && d.items) || [];
+      list.textContent = '';
+      if (!items.length) { list.innerHTML = '<div class="empty" style="padding:30px 10px">暂无任务记录</div>'; return; }
+      items.slice(0, 50).forEach(function (t) {
+        var row = document.createElement('div');
+        row.className = 'hist-row';
+        var st = t.status === 'done' ? '完成' : (t.status === 'error' ? '失败' : '进行中');
+        var stCls = t.status === 'done' ? 'ok' : (t.status === 'error' ? 'no' : 'run');
+        row.innerHTML =
+          '<div class="h-top"><span class="m-badge ' + stCls + '">' + esc(st) + '</span><span class="h-engine">' + esc(t.engine || '') + '</span>' +
+          '<span class="h-time">' + fmtHM(t.time) + '</span></div>' +
+          '<div class="h-task">' + esc(t.task || '') + '</div>' +
+          (t.resultText ? '<div class="h-res">' + esc(t.resultText) + '</div>' : '');
+        list.appendChild(row);
+      });
+    }).catch(function () { list.innerHTML = '<div class="empty" style="padding:30px 10px">加载失败</div>'; });
+  }
+  function fmtHM(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
   // ============ 命令中心（对标 DSH 桌面"命令"面板） ============
@@ -2804,6 +2886,20 @@ svg { flex: none; }
       } else {
         cmsg.text = 'Codex 执行超时（>6 分钟）';
         cmsg.ok = false;
+      }
+      state.running = false; updateRunUI(); renderTimeline();
+      return;
+    }
+    // Claude 分支（同步执行；未安装时 route-task 返回未配置）
+    if (route && route.engine === 'claude') {
+      state.msgs.push({ role: 'user', text: text, time: new Date().toISOString() });
+      input.value = '';
+      state.running = true;
+      stopLiveFollow(); state.liveMsg = null; updateRunUI();
+      if (route.ok) {
+        state.msgs.push({ role: 'asst', kind: 'asst', text: String(route.stdout || '').trim() || '（Claude 完成，无输出）', time: new Date().toISOString(), _claude: true });
+      } else {
+        state.msgs.push({ role: 'asst', kind: 'asst', text: String(route.error || 'Claude 执行失败').slice(0, 300), time: new Date().toISOString(), _claude: true, ok: false });
       }
       state.running = false; updateRunUI(); renderTimeline();
       return;
@@ -4411,6 +4507,8 @@ svg { flex: none; }
     $('enginePill').addEventListener('click', openEngineSheet);
     $('engineClose').addEventListener('click', function () { $('engineMask').classList.add('hidden'); });
     $('engineMask').addEventListener('click', function (e) { if (e.target === $('engineMask')) $('engineMask').classList.add('hidden'); });
+    $('histClose').addEventListener('click', function () { $('histMask').classList.add('hidden'); });
+    $('histMask').addEventListener('click', function (e) { if (e.target === $('histMask')) $('histMask').classList.add('hidden'); });
     $('cmdClose').addEventListener('click', function () { $('cmdMask').classList.add('hidden'); });
     $('cmdMask').addEventListener('click', function (e) { if (e.target === $('cmdMask')) $('cmdMask').classList.add('hidden'); });
     // 图片附件

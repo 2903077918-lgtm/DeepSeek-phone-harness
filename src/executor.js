@@ -769,6 +769,10 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
   executor.routeTask = routeTask;
   executor.startCodex = startCodex;
   executor.getCodexTask = getCodexTask;
+  executor.listEngines = listEngines;
+  executor.runClaude = runClaude;
+  executor.recordTask = recordTask;
+  executor.getTaskHistory = getTaskHistory;
   return executor;
 }
 
@@ -863,4 +867,87 @@ function resolveCodexJs() {
     }
   } catch { _codexJs = null; }
   return _codexJs;
+}
+
+// ============ ① 引擎状态探测（聚合平台：DSH / Codex / Claude / Cline / Gemini） ============
+// 探测各 CLI 是否安装 + 版本；DSH 用 3080 探测。返回 {engine: {available, version?, note?}}
+function probeCliVersion(cmd, args) {
+  try {
+    const out = execFileSync(cmd, Array.isArray(args) ? args : ['--version'], { encoding: 'utf8', timeout: 8000, windowsHide: true });
+    return String(out || '').trim().split(/\r?\n/).filter(Boolean).slice(0, 2).join(' · ') || true;
+  } catch {
+    return null;
+  }
+}
+async function listEngines() {
+  // DSH：探 3080
+  let dshOk = false;
+  try { await fetchRpc('settings.describe', {}); dshOk = true; } catch { dshOk = false; }
+  // Codex：解析入口用 node 跑 --version
+  let codexV = null;
+  try {
+    const js = resolveCodexJs();
+    const out = js && js.endsWith('.js')
+      ? execFileSync(process.execPath, [js, '--version'], { encoding: 'utf8', timeout: 8000, windowsHide: true })
+      : execFileSync('codex', ['--version'], { encoding: 'utf8', timeout: 8000, windowsHide: true });
+    codexV = String(out || '').trim().split(/\r?\n/)[0] || true;
+  } catch { codexV = null; }
+  const claudeV = probeCliVersion('claude', ['--version']);
+  const clineV = probeCliVersion('cline', ['--version']);
+  const geminiV = probeCliVersion('gemini', ['--version']);
+  return {
+    engines: [
+      { id: 'dsh', available: dshOk, version: dshOk ? 'running' : null, note: dshOk ? '本机 DeepSeek Harness (3080)' : 'DSH 未运行（3080 不可达）' },
+      { id: 'codex', available: !!codexV, version: codexV || null, note: codexV ? 'Codex CLI' : '未安装 codex（npm i -g @openai/codex）' },
+      { id: 'claude', available: !!claudeV, version: claudeV || null, note: claudeV ? 'Claude Code CLI' : '未安装 claude（npm i -g @anthropic-ai/claude-code）' },
+      { id: 'cline', available: !!clineV, version: clineV || null, note: clineV ? 'Cline CLI' : 'Cline 无独立 CLI（VS Code 插件）' },
+      { id: 'gemini', available: !!geminiV, version: geminiV || null, note: geminiV ? 'Gemini CLI' : '未安装 gemini' },
+    ],
+  };
+}
+
+// ============ ② Claude Code headless adapter（claude -p "<task>"） ============
+// 仅当 claude CLI 已安装才可用；未安装时 route-task 返回"未配置"。
+async function runClaude(cwd, task, timeoutMs = 10 * 60 * 1000) {
+  const dir = String(cwd || ROOT_DIR).trim();
+  const line = String(task || '').trim();
+  if (!line) return { ok: false, error: 'task 不能为空' };
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn('claude', ['-p', line, '--output-format', 'text'], { cwd: dir, windowsHide: true });
+    } catch (e) { resolve({ ok: false, error: 'claude 启动失败: ' + e.message }); return; }
+    let out = '', err = '';
+    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, timeoutMs);
+    child.stdout.on('data', (d) => { out += String(d); });
+    child.stderr.on('data', (d) => { err += String(d); });
+    child.on('error', (e) => { clearTimeout(timer); resolve({ ok: false, error: 'claude 运行错误（未安装 claude?）: ' + e.message }); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ ok: code === 0, exitCode: code, stdout: out, stderr: err });
+    });
+  });
+}
+
+// ============ ③ 统一任务历史（跨引擎：DSH / Codex / Claude / ...） ============
+const taskHistory = [];
+function recordTask(engine, task, taskId) {
+  taskHistory.unshift({
+    engine: String(engine || 'dsh'),
+    task: String(task || '').slice(0, 200),
+    time: new Date().toISOString(),
+    status: 'running',
+    taskId: taskId || null,
+  });
+  if (taskHistory.length > 200) taskHistory.length = 200;
+}
+function getTaskHistory(engineFilter) {
+  return taskHistory
+    .filter((t) => !engineFilter || t.engine === engineFilter)
+    .map((t) => {
+      const r = t.taskId ? (getCodexTask(t.taskId) || null) : null;
+      const status = r ? r.status : t.status;
+      const resultText = r && r.result ? (r.result.stdout ? String(r.result.stdout).slice(0, 200) : (r.result.error || '')) : '';
+      return { engine: t.engine, task: t.task, time: t.time, status, taskId: t.taskId, resultText };
+    });
 }
