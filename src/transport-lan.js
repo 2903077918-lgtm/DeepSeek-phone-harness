@@ -274,13 +274,16 @@ export function createLanTransport({ config, rootDir, executor, history, queue, 
         return;
       }
       // ---- 多 Agent 自动路由：复杂任务→Codex（codex exec 异步），review/其他→DSH ----
-      // POST /api/route-task {sessionId, task, cwd} → 判定引擎；codex 异步提交返回 taskId，dsh 返回 useExisting 走原 /api/dsh-continue
+      // POST /api/route-task {sessionId, task, cwd, engine?} → 判定引擎；codex 异步提交返回 taskId，dsh 返回 useExisting 走原 /api/dsh-continue
+      // engine 可选显式指定（'dsh'|'codex'）；缺省按 routeTask(task) 自动判断
       if (req.method === 'POST' && url.pathname === '/api/route-task') {
         if (!auth(req, res)) return;
         const body = await readBody(req);
         const task = String(body.task || '').trim();
         if (!task) { sendJson(res, 400, { ok: false, error: 'task 不能为空' }); return; }
-        const engine = executor.routeTask(task);
+        const explicit = String(body.engine || '').trim();
+        let engine = explicit ? explicit : executor.routeTask(task);
+        if (engine === 'claude' || engine === 'cline') { sendJson(res, 400, { ok: false, engine, error: '该引擎未配置（需在电脑端安装对应 CLI）' }); return; }
         if (engine === 'codex') {
           const rec = executor.startCodex(body.cwd, task);
           sendJson(res, 200, { engine: 'codex', accepted: true, taskId: rec.id });

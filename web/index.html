@@ -653,6 +653,9 @@ svg { flex: none; }
 .model-item.stack .m-name { width: 100%; white-space: normal; line-height: 1.4; }
 .model-item.stack .m-desc { line-height: 1.5; }
 .model-item.stack .m-check { position: absolute; right: 12px; top: 12px; }
+/* 引擎选择：禁用项置灰 + 引擎 pill 强调色 */
+.model-item.disabled { opacity: 0.45; }
+.engine-pill { color: var(--blue-2); border-color: rgba(64,112,224,0.45); background: rgba(64,112,224,0.10); }
 /* 命令中心：斜杠命令名 + 电脑端标记 */
 .model-item.stack .m-cmd { font-family: var(--mono); font-weight: 700; }
 .model-item.stack .m-badge { float: right; font-size: 10px; font-weight: 500; color: var(--text-3); border: 1px solid var(--border-strong); border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
@@ -999,6 +1002,9 @@ svg { flex: none; }
             <button class="send" id="sendBtn" type="button" aria-label="发送"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
           </div>
           <div class="composer-models" id="composerModels">
+            <button class="model-pill engine-pill" id="enginePill" type="button" title="任务执行引擎">
+              <span id="enginePillLabel">自动</span><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
             <span class="model-pill stat-pill appr-pill hidden" id="apprPill" title="审批状态">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
               <span id="apprPillLabel">需要批准</span>
@@ -1015,6 +1021,14 @@ svg { flex: none; }
       <div class="sheet">
         <div class="sheet-head"><div class="sheet-title">命令中心</div><button class="icon-btn" id="cmdClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
         <div class="sheet-body" id="cmdList"></div>
+      </div>
+    </div>
+
+    <!-- 任务执行引擎选择（聚合平台：DSH / Codex / Claude / Cline） -->
+    <div class="sheet-mask hidden" id="engineMask">
+      <div class="sheet">
+        <div class="sheet-head"><div class="sheet-title">执行引擎</div><button class="icon-btn" id="engineClose" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+        <div class="sheet-body" id="engineList"></div>
       </div>
     </div>
 
@@ -1369,6 +1383,7 @@ svg { flex: none; }
     followBase: 0,            // SSE 已消费到的事件 seq
     statusTimer: null,        // 会话状态（轮/步/耗时/权限）周期刷新
     busyEnter: load('busyEnter', 'steer'), // 繁忙时 Enter：steer 插话 / queue 排队（默认同 DSH ui-conversation.busyEnter）
+    engine: load('engine', 'auto'),   // 任务执行引擎：auto(自动路由) | dsh | codex | claude | cline
     pendingQueue: [],   // queue 模式下待补发的消息
     locale: load('locale', 'zh'), // 手机端界面语言（zh/en，与 DSH locale.preference 联动）
     drawerView: load('drawerView', 'sessions'), // 抽屉视图：sessions（当前工作区会话）/ workspaces（全部工作区，对标 DSH groupBy）
@@ -2273,6 +2288,50 @@ svg { flex: none; }
     }
   }
 
+  // ============ 任务执行引擎（聚合平台：DSH / Codex / Claude / Cline） ============
+  // state.engine: 'auto'（自动路由）| 'dsh' | 'codex' | 'claude' | 'cline'（后两者未配置时禁用）
+  var ENGINE_DEFS = [
+    { id: 'auto', n: '自动', d: '根据任务自动选 DSH 或 Codex' },
+    { id: 'dsh', n: 'DSH', d: '通用 / review / 常规任务' },
+    { id: 'codex', n: 'Codex', d: '复杂代码任务（异步执行）' },
+    { id: 'claude', n: 'Claude', d: 'Claude Code（未配置）', disabled: true },
+    { id: 'cline', n: 'Cline', d: 'Cline（未配置）', disabled: true },
+  ];
+  function engineLabel(id) {
+    var e = ENGINE_DEFS.find(function (x) { return x.id === id; });
+    return e ? e.n : (id || '自动');
+  }
+  function renderEnginePill() {
+    var b = $('enginePillLabel');
+    if (b) b.textContent = state.engine === 'auto' ? (state.locale === 'en' ? 'Auto' : '自动') : engineLabel(state.engine);
+  }
+  function openEngineSheet() {
+    var list = $('engineList');
+    list.textContent = '';
+    var note = document.createElement('div');
+    note.className = 'empty';
+    note.style.cssText = 'font-size:11px;color:var(--text-3);padding:2px 4px 10px;text-align:left;line-height:1.6';
+    note.textContent = '选择发任务用哪个 agent 执行（聚合平台）。Claude / Cline 需在电脑端安装对应 CLI。';
+    list.appendChild(note);
+    ENGINE_DEFS.forEach(function (e) {
+      var it = document.createElement('button');
+      it.type = 'button';
+      it.className = 'model-item stack' + (state.engine === e.id ? ' on' : '') + (e.disabled ? ' disabled' : '');
+      it.innerHTML = '<span class="m-name">' + esc(e.n) + (state.engine === e.id ? '<span class="m-check">&#10003;</span>' : '') + '</span>' +
+        '<span class="m-desc">' + esc(e.d) + '</span>';
+      if (!e.disabled) it.addEventListener('click', function () { selectEngine(e); });
+      list.appendChild(it);
+    });
+    $('engineMask').classList.remove('hidden');
+  }
+  function selectEngine(e) {
+    state.engine = e.id;
+    save('engine', e.id);
+    renderEnginePill();
+    $('engineMask').classList.add('hidden');
+    toast(state.locale === 'en' ? ('Engine: ' + e.n) : ('执行引擎：' + e.n));
+  }
+
   // ============ 命令中心（对标 DSH 桌面"命令"面板） ============
   // DSH 的斜杠命令：compact/export/feedback/goal/permission/plan/model。
   // 均通过 typert commands/execute 执行（手机端经 /api/dsh-command 转发）。
@@ -2706,12 +2765,19 @@ svg { flex: none; }
     }
     if (!state.currentWs) { toast('请先选择工作区', true); return; }
 
-    // ---- 多 Agent 自动路由：探测引擎，Codex 复杂任务走异步执行，其余走 DSH ----
+    // ---- 任务执行引擎（聚合平台）：显式引擎优先；auto 则自动路由探测 ----
     var route = null;
-    try {
-      var wd = (state.currentWs && state.currentWs.path) || undefined;
-      route = await api('/api/route-task', { method: 'POST', body: JSON.stringify({ task: text, cwd: wd }), timeoutMs: 8000 });
-    } catch (e) { /* 路由探测失败则默认 DSH */ }
+    var wantEngine = state.engine && state.engine !== 'auto' ? state.engine : null;
+    if (wantEngine === 'dsh') {
+      route = { engine: 'dsh', useExisting: true }; // 显式 DSH：直接走 DSH 流程
+    } else {
+      try {
+        var wd = (state.currentWs && state.currentWs.path) || undefined;
+        var rBody = { task: text, cwd: wd };
+        if (wantEngine === 'codex') rBody.engine = 'codex'; // 显式 Codex
+        route = await api('/api/route-task', { method: 'POST', body: JSON.stringify(rBody), timeoutMs: 8000 });
+      } catch (e) { /* 路由探测失败则默认 DSH */ }
+    }
     if (route && route.engine === 'codex' && route.taskId) {
       state.msgs.push({ role: 'user', text: text, time: new Date().toISOString() });
       input.value = '';
@@ -3842,6 +3908,7 @@ svg { flex: none; }
     '默认 Agent 预设': 'Default agent preset', '之后新建的会话使用该模式': 'Used for newly created sessions', '已设置默认 Agent 预设': 'Default agent preset set', '网页搜索': 'Web search', '网页搜索（web-search-deepseek）': 'Web search (web-search-deepseek)', 'DSH 网页检索工具的 DeepSeek 配置': 'DeepSeek config for DSH web search tool', '单次网页检索最大 token': 'Max tokens per web search', '每任务最多检索次数': 'Max uses per task', 'API 密钥环境变量': 'API key env var', '保存网页搜索配置': 'Save web search config', '写入电脑端 DSH 设置': 'Write to DSH settings on your PC', '已保存网页搜索配置': 'Web search config saved',
     '子代理': 'Subagents', '连接设置': 'Connection', '选择工作区': 'Select workspace', '进行中': 'Running',
     '命令中心': 'Command center', '命令': 'Commands', '电脑端': 'Desktop',
+    '执行引擎': 'Engine', '根据任务自动选 DSH 或 Codex': 'Auto pick DSH or Codex by task', '复杂代码任务（异步执行）': 'Complex code tasks (async)', 'Claude Code（未配置）': 'Claude Code (not configured)', '选择发任务用哪个 agent 执行（聚合平台）': 'Pick which agent runs your task (multi-agent)',
     '搜索': 'Search', '搜索轨迹': 'Search trajectory', '条': 'items', '暂无轨迹': 'No trajectory', '无匹配结果': 'No matches',
     '对话': 'Chat', '轨迹': 'Trajectory', '切换工作区': 'Switch workspace', '返回': 'Back', '刷新': 'Refresh', '重连': 'Reconnect',
     '加载更早消息': 'Load earlier messages', '输入任务，交给电脑上的 DSH…': 'Send a task to DSH on your PC…', '停止': 'Stop', '发送': 'Send',
@@ -4341,6 +4408,9 @@ svg { flex: none; }
     $('subagentChip').addEventListener('click', function () { toggleLivePanel('subagents'); });
     $('jobsChip').addEventListener('click', function () { toggleLivePanel('jobs'); });
     $('cmdChip').addEventListener('click', openCmdSheet);
+    $('enginePill').addEventListener('click', openEngineSheet);
+    $('engineClose').addEventListener('click', function () { $('engineMask').classList.add('hidden'); });
+    $('engineMask').addEventListener('click', function (e) { if (e.target === $('engineMask')) $('engineMask').classList.add('hidden'); });
     $('cmdClose').addEventListener('click', function () { $('cmdMask').classList.add('hidden'); });
     $('cmdMask').addEventListener('click', function (e) { if (e.target === $('cmdMask')) $('cmdMask').classList.add('hidden'); });
     // 图片附件
@@ -4411,6 +4481,7 @@ svg { flex: none; }
     }
     applyLocale(); // 启动即应用已保存的界面语言
     setupPush();   // 推送通知（PWA Web Push）
+    renderEnginePill(); // 任务执行引擎（聚合平台）
   }
   function autoGrow(el) {
     el.style.height = 'auto';
