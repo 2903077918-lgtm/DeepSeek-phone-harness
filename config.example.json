@@ -7,5 +7,8 @@
     "deviceId": "win-agent-home",
     "deviceName": "家里电脑",
     "pollIntervalMs": 3000
+  },
+  "gemini": {
+    "apiKey": "可选：Google AI Studio 免费 API key（启用 Gemini 引擎）"
   }
 }

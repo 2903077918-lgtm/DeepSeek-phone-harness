@@ -2314,8 +2314,9 @@ svg { flex: none; }
     { id: 'auto', n: '自动', d: '根据任务自动选 DSH 或 Codex' },
     { id: 'dsh', n: 'DSH', d: '通用 / review / 常规任务' },
     { id: 'codex', n: 'Codex', d: '复杂代码任务（异步执行）' },
+    { id: 'gemini', n: 'Gemini', d: '免费快速生成（Google AI，需 key）' },
     { id: 'claude', n: 'Claude', d: 'Claude Code（未配置）', disabled: true },
-    { id: 'cline', n: 'Cline', d: 'Cline（未配置）', disabled: true },
+    { id: 'cline', n: 'Cline', d: 'Cline（无独立 CLI）', disabled: true },
   ];
   function engineLabel(id) {
     var e = ENGINE_DEFS.find(function (x) { return x.id === id; });
@@ -2900,6 +2901,20 @@ svg { flex: none; }
         state.msgs.push({ role: 'asst', kind: 'asst', text: String(route.stdout || '').trim() || '（Claude 完成，无输出）', time: new Date().toISOString(), _claude: true });
       } else {
         state.msgs.push({ role: 'asst', kind: 'asst', text: String(route.error || 'Claude 执行失败').slice(0, 300), time: new Date().toISOString(), _claude: true, ok: false });
+      }
+      state.running = false; updateRunUI(); renderTimeline();
+      return;
+    }
+    // Gemini 分支（同步执行；未配 key 时 route-task 返回未配置）
+    if (route && route.engine === 'gemini') {
+      state.msgs.push({ role: 'user', text: text, time: new Date().toISOString() });
+      input.value = '';
+      state.running = true;
+      stopLiveFollow(); state.liveMsg = null; updateRunUI();
+      if (route.ok) {
+        state.msgs.push({ role: 'asst', kind: 'asst', text: String(route.stdout || '').trim() || '（Gemini 完成，无输出）', time: new Date().toISOString(), _gemini: true });
+      } else {
+        state.msgs.push({ role: 'asst', kind: 'asst', text: String(route.error || 'Gemini 执行失败').slice(0, 300), time: new Date().toISOString(), _gemini: true, ok: false });
       }
       state.running = false; updateRunUI(); renderTimeline();
       return;

@@ -771,6 +771,7 @@ export function createExecutor({ mode = 'lan', sessionsDir = ROOT_DIR } = {}) {
   executor.getCodexTask = getCodexTask;
   executor.listEngines = listEngines;
   executor.runClaude = runClaude;
+  executor.runGemini = runGemini;
   executor.recordTask = recordTask;
   executor.getTaskHistory = getTaskHistory;
   return executor;
@@ -869,6 +870,44 @@ function resolveCodexJs() {
   return _codexJs;
 }
 
+// ============ ② Gemini（免费 API：Google AI Studio key + 免费模型） ============
+// 需 GEMINI_API_KEY（config.json 的 gemini.apiKey 或环境变量）。API 直连，无需 CLI。
+const GEMINI_MODEL = 'gemini-2.0-flash';
+function getGeminiKey() {
+  const env = String(process.env.GEMINI_API_KEY || '').trim();
+  if (env) return env;
+  try {
+    const cfg = JSON.parse(readFileSync(path.join(ROOT_DIR, 'config.json'), 'utf8'));
+    return String((cfg && cfg.gemini && cfg.gemini.apiKey) || '').trim();
+  } catch { return ''; }
+}
+async function runGemini(cwd, task, timeoutMs = 60 * 1000) {
+  const line = String(task || '').trim();
+  if (!line) return { ok: false, error: 'task 不能为空' };
+  const key = getGeminiKey();
+  if (!key) return { ok: false, error: '未配置 GEMINI_API_KEY（Google AI Studio 免费申请）' };
+  try {
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent?key=' + encodeURIComponent(key);
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: line }] }] }),
+        signal: ac.signal,
+      });
+      if (!resp.ok) return { ok: false, error: 'Gemini API HTTP ' + resp.status + ' ' + String(await resp.text()).slice(0, 200) };
+      const j = await resp.json();
+      const parts = (j && j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
+      const txt = parts.map((p) => p.text || '').join('').trim();
+      return txt ? { ok: true, stdout: txt } : { ok: false, error: 'Gemini 返回空内容' };
+    } finally { clearTimeout(timer); }
+  } catch (e) {
+    return { ok: false, error: 'Gemini 调用失败: ' + String(e && e.message ? e.message : e) };
+  }
+}
+
 // ============ ① 引擎状态探测（聚合平台：DSH / Codex / Claude / Cline / Gemini） ============
 // 探测各 CLI 是否安装 + 版本；DSH 用 3080 探测。返回 {engine: {available, version?, note?}}
 function probeCliVersion(cmd, args) {
@@ -894,14 +933,14 @@ async function listEngines() {
   } catch { codexV = null; }
   const claudeV = probeCliVersion('claude', ['--version']);
   const clineV = probeCliVersion('cline', ['--version']);
-  const geminiV = probeCliVersion('gemini', ['--version']);
+  const geminiV = getGeminiKey() ? ('API · ' + GEMINI_MODEL) : null;
   return {
     engines: [
       { id: 'dsh', available: dshOk, version: dshOk ? 'running' : null, note: dshOk ? '本机 DeepSeek Harness (3080)' : 'DSH 未运行（3080 不可达）' },
       { id: 'codex', available: !!codexV, version: codexV || null, note: codexV ? 'Codex CLI' : '未安装 codex（npm i -g @openai/codex）' },
       { id: 'claude', available: !!claudeV, version: claudeV || null, note: claudeV ? 'Claude Code CLI' : '未安装 claude（npm i -g @anthropic-ai/claude-code）' },
       { id: 'cline', available: !!clineV, version: clineV || null, note: clineV ? 'Cline CLI' : 'Cline 无独立 CLI（VS Code 插件）' },
-      { id: 'gemini', available: !!geminiV, version: geminiV || null, note: geminiV ? 'Gemini CLI' : '未安装 gemini' },
+      { id: 'gemini', available: !!geminiV, version: geminiV || null, note: geminiV ? 'Gemini API（免费）' : '未配置 GEMINI_API_KEY（Google AI Studio 免费申请）' },
     ],
   };
 }

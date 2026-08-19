@@ -297,7 +297,15 @@ export function createLanTransport({ config, rootDir, executor, history, queue, 
           sendJson(res, 200, { engine: 'claude', ok: true, stdout: out.stdout });
           return;
         }
-        if (engine === 'cline' || engine === 'gemini') { sendJson(res, 400, { ok: false, engine, error: '该引擎未配置/无 CLI' }); return; }
+        if (engine === 'gemini') {
+          if (typeof executor.runGemini !== 'function') { sendJson(res, 501, { ok: false, error: 'gemini 适配器不可用' }); return; }
+          executor.recordTask('gemini', task, null);
+          const out = await executor.runGemini(body.cwd, task);
+          if (!out.ok) { sendJson(res, 502, { engine: 'gemini', ok: false, error: out.error }); return; }
+          sendJson(res, 200, { engine: 'gemini', ok: true, stdout: out.stdout });
+          return;
+        }
+        if (engine === 'cline') { sendJson(res, 400, { ok: false, engine, error: 'Cline 无独立 CLI，暂不支持' }); return; }
         executor.recordTask('dsh', task, null);
         sendJson(res, 200, { engine: 'dsh', useExisting: true });
         return;
