@@ -207,6 +207,16 @@ export function createLanTransport({ config, rootDir, executor, history, queue, 
         }
         return;
       }
+      // PWA：manifest + App 图标
+      if (req.method === 'GET' && url.pathname === '/manifest.webmanifest') {
+        const f = path.join(rootDir, 'web', 'manifest.webmanifest');
+        if (existsSync(f)) { res.writeHead(200, { 'content-type': 'application/manifest+json' }); res.end(readFileSync(f, 'utf8')); return; }
+      }
+      if (req.method === 'GET' && (url.pathname === '/icon-192.png' || url.pathname === '/icon-512.png')) {
+        const name = url.pathname === '/icon-192.png' ? 'icon-192.png' : 'icon-512.png';
+        const f = path.join(rootDir, 'web', name);
+        if (existsSync(f)) { res.writeHead(200, { 'content-type': 'image/png' }); res.end(readFileSync(f)); return; }
+      }
       if (req.method === 'GET' && url.pathname === '/api/status') {
         if (!auth(req, res)) return;
         sendJson(res, 200, { ok: true, agent: 'deepseekharness-relay', version: AGENT_VERSION, time: new Date().toISOString(), pending: queue.size });
