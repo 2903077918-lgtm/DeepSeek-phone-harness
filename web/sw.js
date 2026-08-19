@@ -1,30 +1,14 @@
-// web/sw.js —— PWA 通知 + 离线壳缓存
-const CACHE = 'dsh-phone-v1';
-const SHELL = ['/', '/relay.html', '/manifest.webmanifest', '/whale-logo.png', '/icon-192.png', '/icon-512.png'];
-
-self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
-  self.skipWaiting();
-});
+// web/sw.js —— 纯推送 PWA Service Worker
+// 不做任何 fetch 缓存/拦截（预警控器必须联网连电脑，离线不重要；避免缓存 API 或页面导致白屏）。
+// 仅提供：① Web Push 通知 ② 满足 PWA 可安装性（有 sw 即可安装）。
+self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))));
+  // 清掉此前可能残留的缓存（v1/v2 壳缓存），避免旧缓存导致白屏
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))));
   self.clients.claim();
 });
-// 离线兜底：请求失败时回退到缓存的 App 壳
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
-  if (e.request.mode === 'navigate' || url.pathname === '/') {
-    e.respondWith(fetch(e.request).catch(() => caches.match('/relay.html')));
-    return;
-  }
-  if (e.request.method !== 'GET') return;
-  e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request).then((r) => {
-    if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {}); }
-    return r;
-  }).catch(() => caches.match('/relay.html'))));
-});
 
-// ---- Web Push 通知（原有） ----
+// ---- Web Push 通知 ----
 self.addEventListener('push', function (event) {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (e) { /* 非 JSON 忽略 */ }
